@@ -7471,8 +7471,11 @@ static const char _data_FX_MODE_2DDISTORTIONWAVES[] PROGMEM = "Distortion Waves@
 
 struct Frame {
     const uint8_t *data;
-    uint16_t duration; // Duration in seconds (0 = use speed-based timing)
-    uint16_t pulseFrequency; // Flashing frequency in Hz (0 = always on)
+    uint16_t width;           // Pattern width
+    uint16_t height;          // Pattern height  
+    uint16_t baseDuration;    // Base duration in ms (modified by speed)
+    uint16_t basePulseFreq;   // Base pulse frequency in Hz (modified by intensity)
+    uint8_t brightness;       // Brightness level (0-255)
 };
 
 // Define frames as arrays of 0s and 1s (binary map)
@@ -7510,17 +7513,42 @@ const uint8_t frame2[] = {
 };
 
 uint16_t mode_custom_shapes(const Frame frames[], uint16_t frameCount) {
-    // static bool strobeOn = true;
     static uint32_t lastFrameTime = 0;
     static uint8_t currentFrame = 0;
     static uint32_t lastStrobeTime = 0; // Tracks strobe toggling
     static bool strobeState = true;     // Tracks LED flashing state
 
+    // Reset on first call of new effect
+    if (SEGENV.call == 0) {
+        currentFrame = 0;
+        lastFrameTime = 0;
+        lastStrobeTime = 0;
+        strobeState = true;
+    }
+
+    // Validate input parameters
+    if (!frames || frameCount == 0) {
+        return FRAMETIME;
+    }
+
+    // Validate frame count and current frame
+    if (frameCount == 0 || currentFrame >= frameCount) {
+        currentFrame = 0;
+    }
+
     uint32_t currentTime = millis();
 
     // Retrieve current frame settings
     const Frame &frame = frames[currentFrame];
-    uint32_t frameTime = (frame.duration > 0) ? frame.duration * 1000 : map(SEGMENT.speed, 0, 255, 1000, 100);
+    
+    // Apply speed slider with 3 discrete settings
+    uint32_t frameTime = frame.baseDuration;
+    if (SEGMENT.speed == 0) {
+        frameTime = frame.baseDuration * 2;  // 2x slower
+    } else if (SEGMENT.speed == 255) {
+        frameTime = frame.baseDuration / 2;  // 2x faster
+    }
+    // else: 1-254 = normal speed (use baseDuration as-is)
 
     // Update frame index if needed
     if (currentTime - lastFrameTime > frameTime) {
@@ -7529,29 +7557,130 @@ uint16_t mode_custom_shapes(const Frame frames[], uint16_t frameCount) {
     }
 
     // Determine strobe behavior for the current frame
-    uint32_t cycleTime = (frame.pulseFrequency > 0) ? (1000 / frame.pulseFrequency) : 0;
+    uint32_t cycleTime = (frame.basePulseFreq > 0) ? (1000 / frame.basePulseFreq) : 0;
 
-    if (frame.pulseFrequency > 0 && (currentTime - lastStrobeTime > cycleTime / 2)) {
+    if (frame.basePulseFreq > 0 && (currentTime - lastStrobeTime > cycleTime / 2)) {
         lastStrobeTime = currentTime;
         strobeState = !strobeState; // Toggle strobe state
-    } else if (frame.pulseFrequency == 0) {
+    } else if (frame.basePulseFreq == 0) {
         strobeState = true; // Always on
     }
 
     // Get the current frame data
     const uint8_t *currentColors = frame.data;
+    uint32_t patternSize = (uint32_t)frame.width * frame.height;
+    if (patternSize == 0 || patternSize > 10000) { // Reasonable upper limit
+        return FRAMETIME;
+    }
+
+    // Get primary color
+    uint32_t primaryColor = SEGCOLOR(0);
+    if (primaryColor == BLACK) {
+        primaryColor = SEGMENT.color_from_palette(0, true, PALETTE_SOLID_WRAP, 0);
+    }
+
+    // Apply frame brightness
+    if (frame.brightness < 255) {
+        uint8_t r = (R(primaryColor) * frame.brightness) >> 8;
+        uint8_t g = (G(primaryColor) * frame.brightness) >> 8;
+        uint8_t b = (B(primaryColor) * frame.brightness) >> 8;
+        uint8_t w = (W(primaryColor) * frame.brightness) >> 8;
+        primaryColor = RGBW32(r, g, b, w);
+    }
 
     // Apply the frame and strobe effect
     for (uint16_t i = 0; i < SEGLEN; i++) {
-        uint8_t color = currentColors[i];
+        uint8_t color = currentColors[i % patternSize];
         if (!strobeState || color == 0) {
-            SEGMENT.setPixelColor(i, 0); // Turn off LED
+            SEGMENT.setPixelColor(i, BLACK); // Turn off LED
         } else {
-            uint32_t ledColor = SEGMENT.color_from_palette(0, true, PALETTE_SOLID_WRAP, 0);
-            SEGMENT.setPixelColor(i, ledColor);
+            SEGMENT.setPixelColor(i, primaryColor);
         }
     }
 
+    return FRAMETIME;
+}
+
+uint16_t mode_hertz_testing() {
+    // Hardware-reliable frequency steps (tested up to 20Hz)
+    // Focus on physiologically useful frequencies for closed-eye effects
+    const uint16_t frequencies[] = {
+        1, 2, 4, 5, 8, 10, 12, 15, 20
+    };
+    const uint8_t freqCount = sizeof(frequencies) / sizeof(frequencies[0]);
+    
+    // Map speed slider to frequency array index
+    uint8_t freqIndex = map(SEGMENT.speed, 0, 255, 0, freqCount - 1);
+    uint16_t targetHz = frequencies[freqIndex];
+    
+    // Use intensity to control brightness
+    uint8_t brightness = SEGMENT.intensity;
+    
+    // Calculate clean period (always whole milliseconds)
+    uint32_t period = 1000 / targetHz;
+    uint32_t halfPeriod = period / 2;
+    
+    // Simple, stable timing calculation
+    uint32_t now = millis();
+    uint32_t phase = now % period;
+    bool isOn = (phase < halfPeriod);
+    
+    // Set color
+    uint32_t color = BLACK;
+    if (isOn && brightness > 0) {
+        // Use simple white for consistent performance
+        uint8_t val = brightness;
+        color = ((uint32_t)val << 16) | ((uint32_t)val << 8) | val;
+    }
+    
+    // Adaptive pixel count for performance
+    uint16_t maxPixels;
+    if (targetHz >= 40) {
+        maxPixels = 100;  // High frequency: fewer pixels
+    } else if (targetHz >= 20) {
+        maxPixels = 200;  // Medium frequency: medium pixels
+    } else {
+        maxPixels = 500;  // Low frequency: more pixels
+    }
+    
+    uint16_t pixelCount = (SEGLEN < maxPixels) ? SEGLEN : maxPixels;
+    
+    // Update pixels
+    for (uint16_t i = 0; i < pixelCount; i++) {
+        SEGMENT.setPixelColor(i, color);
+    }
+    
+    return FRAMETIME;
+}
+
+uint16_t mode_high_frequency_test() {
+    // Dedicated high-frequency testing (25-50Hz)
+    // Minimal processing for maximum performance
+    const uint16_t highFreqs[] = { 25, 30, 40, 50 };
+    const uint8_t freqCount = sizeof(highFreqs) / sizeof(highFreqs[0]);
+    
+    uint8_t freqIndex = map(SEGMENT.speed, 0, 255, 0, freqCount - 1);
+    uint16_t targetHz = highFreqs[freqIndex];
+    uint8_t brightness = SEGMENT.intensity;
+    
+    // Ultra-simple timing for maximum performance
+    uint32_t period = 1000 / targetHz;
+    uint32_t now = millis();
+    bool isOn = ((now / period) & 1) == 0;
+    
+    // Minimal pixel count for high frequency
+    uint16_t pixelCount = (SEGLEN < 50) ? SEGLEN : 50;
+    
+    uint32_t color = BLACK;
+    if (isOn && brightness > 0) {
+        uint8_t val = brightness;
+        color = ((uint32_t)val << 16) | ((uint32_t)val << 8) | val;
+    }
+    
+    for (uint16_t i = 0; i < pixelCount; i++) {
+        SEGMENT.setPixelColor(i, color);
+    }
+    
     return FRAMETIME;
 }
 
@@ -7640,13 +7769,12 @@ uint16_t mode_custom_shapes(const Frame frames[], uint16_t frameCount) {
 static const char _data_FX_MODE_CUSTOM[] PROGMEM = "Custom Squares@!,!,,,,Smooth;;!";
 
 uint16_t mode_custom_squares() {
-  const uint8_t *frames[] = {frame0, frame1, frame2}; // Create an array of pointers
   const Frame sframes[] = {
-    { frame0, 10, 0 },  // Show for 2 seconds
-    { frame1, 2, 0 },  // Show for 3 seconds
-    { frame2, 10, 0 },  // Show for 1 second
-};
-  const uint16_t frameCount = sizeof(frames) / sizeof(frames[0]);
+    { frame0, 8, 8, 2000, 5, 255 },  // 8x8 pattern, 2s base duration, 5Hz base pulse, full brightness
+    { frame1, 8, 8, 3000, 3, 255 },  // 8x8 pattern, 3s base duration, 3Hz base pulse, full brightness
+    { frame2, 8, 8, 1000, 8, 255 },  // 8x8 pattern, 1s base duration, 8Hz base pulse, full brightness
+  };
+  const uint16_t frameCount = sizeof(sframes) / sizeof(sframes[0]);
   return mode_custom_shapes(sframes, frameCount); 
 }
 
@@ -7719,16 +7847,15 @@ const uint8_t dsframe5[] = {
 };
 
 uint16_t mode_custom_diamond_spin() {
-  const uint8_t *frames[] = {dsframe0, dsframe1, dsframe2, dsframe3, dsframe4, dsframe5}; // Create an array of pointers
   const Frame dsframes[] = {
-    { dsframe0, 10, 50 },  // Show for 2 seconds
-    { dsframe1, 2, 30 },  // Show for 3 seconds
-    { dsframe2, 10, 50 },  // Show for 1 second
-    { dsframe3, 10, 30},  // Show for 2 seconds
-    { dsframe4, 2, 50 },  // Show for 3 seconds
-    { dsframe5, 10, 30 }  // Show for 1 second
-};
-  const uint16_t frameCount = sizeof(frames) / sizeof(frames[0]);
+    { dsframe0, 35, 1, 2000, 10, 255 },  // 39 element pattern, 2s base duration, 10Hz base pulse, full brightness
+    { dsframe1, 35, 1, 500, 6, 255 },    // 39 element pattern, 0.5s base duration, 6Hz base pulse, full brightness
+    { dsframe2, 35, 1, 2000, 10, 255 },  // 39 element pattern, 2s base duration, 10Hz base pulse, full brightness
+    { dsframe3, 35, 1, 2000, 6, 255 },   // 39 element pattern, 2s base duration, 6Hz base pulse, full brightness
+    { dsframe4, 35, 1, 500, 10, 255 },   // 39 element pattern, 0.5s base duration, 10Hz base pulse, full brightness
+    { dsframe5, 35, 1, 2000, 6, 255 }    // 39 element pattern, 2s base duration, 6Hz base pulse, full brightness
+  };
+  const uint16_t frameCount = sizeof(dsframes) / sizeof(dsframes[0]);
   return mode_custom_shapes(dsframes, frameCount); 
 }
 
@@ -7820,18 +7947,17 @@ const uint8_t dframe7[] = {
 };
 
 uint16_t mode_custom_drunk_diamond_spin() {
-  const uint8_t *frames[] = {dframe0, dframe1, dframe2, dframe3, dframe4, dframe5, dframe6, dframe7}; // Create an array of pointers
   const Frame dframes[] = {
-    { dframe0, 10, 50 },  // Show for 2 seconds
-    { dframe1, 2, 30 },  // Show for 3 seconds
-    { dframe2, 10, 35 },  // Show for 1 second
-    { dframe3, 10, 40 },  // Show for 2 seconds
-    { dframe4, 2, 0 },  // Show for 3 seconds
-    { dframe5, 10, 0 },  // Show for 1 second
-    { dframe6, 2, 0 },  // Show for 3 seconds
-    { dframe7, 10, 50 }  // Show for 1 second
-};
-  const uint16_t frameCount = sizeof(frames) / sizeof(frames[0]);
+    { dframe0, 35, 1, 2000, 10, 255 },  // 39 element pattern, 2s base duration, 10Hz base pulse, full brightness
+    { dframe1, 35, 1, 500, 6, 255 },    // 39 element pattern, 0.5s base duration, 6Hz base pulse, full brightness
+    { dframe2, 35, 1, 2000, 7, 255 },   // 39 element pattern, 2s base duration, 7Hz base pulse, full brightness
+    { dframe3, 35, 1, 2000, 8, 255 },   // 39 element pattern, 2s base duration, 8Hz base pulse, full brightness
+    { dframe4, 35, 1, 500, 0, 255 },    // 39 element pattern, 0.5s base duration, no pulse, full brightness
+    { dframe5, 35, 1, 2000, 0, 255 },   // 39 element pattern, 2s base duration, no pulse, full brightness
+    { dframe6, 35, 1, 500, 0, 255 },    // 39 element pattern, 0.5s base duration, no pulse, full brightness
+    { dframe7, 35, 1, 2000, 10, 255 }   // 39 element pattern, 2s base duration, 10Hz base pulse, full brightness
+  };
+  const uint16_t frameCount = sizeof(dframes) / sizeof(dframes[0]);
   return mode_custom_shapes(dframes, frameCount); 
 }
 
@@ -7870,19 +7996,1271 @@ const uint8_t bframe2[] = {
 };
 
 uint16_t mode_custom_ben() {
-  const uint8_t *frames[] = {bframe0, bframe1, bframe2}; // Create an array of pointers
   const Frame bframes[] = {
-    { bframe0, 10, 0 },  // Show for 2 seconds
-    { bframe1, 2, 0 },  // Show for 3 seconds
-    { bframe2, 10, 0},  // Show for 1 second
-};
-  const uint16_t frameCount = sizeof(frames) / sizeof(frames[0]);
+    { bframe0, 35, 1, 4000, 1, 255 },  // 35 element pattern, 4s base duration, 1Hz pulse, full brightness
+    { bframe1, 35, 1, 4000, 5, 255 },   // 35 element pattern, 4s base duration, 5Hz pulse, full brightness
+    { bframe2, 35, 1, 4000, 20, 255 },  // 35 element pattern, 4s base duration, 20Hz pulse, full brightness
+  };
+  const uint16_t frameCount = sizeof(bframes) / sizeof(bframes[0]);
   return mode_custom_shapes(bframes, frameCount); 
 }
 
 // Metadata for the custom effect
 static const char _data_FX_MODE_CUSTOM_BEN[] PROGMEM = "Ben@!,!,,,,Smooth;;!";
 
+// NOVAS EFFECT - Hexagon animation with ping-pong pattern
+// Define frames for Novas effect (hexagon patterns, 35 elements each)
+const uint8_t novas_frame0[] = {
+       0, 0, 0, 0,
+      0, 0, 0, 0, 0,
+    0, 0, 1, 1, 0, 0,
+   0, 0, 1, 1, 1, 0, 0,
+    0, 0, 1, 1, 0, 0,
+      0, 0, 0, 0, 0,
+        0, 0, 0, 0
+};
+
+const uint8_t novas_frame1[] = {
+       0, 0, 0, 0,
+      0, 0, 1, 0, 0,
+    0, 0, 1, 1, 0, 0,
+   0, 0, 1, 0, 1, 0, 0,
+    0, 0, 1, 1, 0, 0,
+      0, 0, 1, 0, 0,
+        0, 0, 0, 0
+};
+
+const uint8_t novas_frame2[] = {
+       0, 0, 0, 0,
+      0, 0, 1, 0, 0,
+    0, 0, 1, 1, 0, 0,
+   0, 0, 1, 1, 1, 0, 0,
+    0, 0, 1, 1, 0, 0,
+      0, 0, 1, 0, 0,
+        0, 0, 0, 0
+};
+
+const uint8_t novas_frame3[] = {
+       0, 1, 1, 0,
+      0, 1, 1, 1, 0,
+    0, 1, 1, 1, 1, 0,
+   0, 1, 1, 0, 1, 1, 0,
+    0, 1, 1, 1, 1, 0,
+      0, 1, 1, 1, 0,
+        0, 1, 1, 0
+};
+
+const uint8_t novas_frame4[] = {
+       0, 1, 1, 0,
+      0, 1, 1, 1, 0,
+    0, 1, 1, 1, 1, 0,
+   0, 1, 1, 1, 1, 1, 0,
+    0, 1, 1, 1, 1, 0,
+      0, 1, 1, 1, 0,
+        0, 1, 1, 0
+};
+
+const uint8_t novas_frame5[] = {
+       1, 1, 1, 1,
+      1, 1, 0, 1, 1,
+    1, 1, 0, 0, 1, 1,
+   1, 1, 0, 0, 0, 1, 1,
+    1, 1, 0, 0, 1, 1,
+      1, 1, 0, 1, 1,
+        1, 1, 1, 1
+};
+
+const uint8_t novas_frame6[] = {
+       1, 1, 1, 1,
+      1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1,
+   1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1,
+        1, 1, 1, 1
+};
+
+uint16_t mode_custom_novas() {
+  // Extended sequence with varying durations and Hz values
+  const Frame novasFrames[] = {
+    // First section: 5 seconds, 30Hz (13 frames)
+    { novas_frame0, 35, 1, 5000, 30, 255 },
+    { novas_frame1, 35, 1, 5000, 30, 255 },
+    { novas_frame2, 35, 1, 5000, 30, 255 },
+    { novas_frame3, 35, 1, 5000, 30, 255 },
+    { novas_frame4, 35, 1, 5000, 30, 255 },
+    { novas_frame5, 35, 1, 5000, 30, 255 },
+    { novas_frame6, 35, 1, 5000, 30, 255 },
+    { novas_frame5, 35, 1, 5000, 30, 255 },
+    { novas_frame4, 35, 1, 5000, 30, 255 },
+    { novas_frame3, 35, 1, 5000, 30, 255 },
+    { novas_frame2, 35, 1, 5000, 30, 255 },
+    { novas_frame1, 35, 1, 5000, 30, 255 },
+    { novas_frame0, 35, 1, 5000, 30, 255 },
+    
+    // Second section: 5 seconds, 20Hz (12 frames)
+    { novas_frame1, 35, 1, 5000, 20, 255 },
+    { novas_frame2, 35, 1, 5000, 20, 255 },
+    { novas_frame3, 35, 1, 5000, 20, 255 },
+    { novas_frame4, 35, 1, 5000, 20, 255 },
+    { novas_frame5, 35, 1, 5000, 20, 255 },
+    { novas_frame6, 35, 1, 5000, 20, 255 },
+    { novas_frame5, 35, 1, 5000, 20, 255 },
+    { novas_frame4, 35, 1, 5000, 20, 255 },
+    { novas_frame3, 35, 1, 5000, 20, 255 },
+    { novas_frame2, 35, 1, 5000, 20, 255 },
+    { novas_frame1, 35, 1, 5000, 20, 255 },
+    { novas_frame0, 35, 1, 5000, 20, 255 },
+    
+    // Third section: 5 seconds, 15Hz (12 frames)
+    { novas_frame1, 35, 1, 5000, 15, 255 },
+    { novas_frame2, 35, 1, 5000, 15, 255 },
+    { novas_frame3, 35, 1, 5000, 15, 255 },
+    { novas_frame4, 35, 1, 5000, 15, 255 },
+    { novas_frame5, 35, 1, 5000, 15, 255 },
+    { novas_frame6, 35, 1, 5000, 15, 255 },
+    { novas_frame5, 35, 1, 5000, 15, 255 },
+    { novas_frame4, 35, 1, 5000, 15, 255 },
+    { novas_frame3, 35, 1, 5000, 15, 255 },
+    { novas_frame2, 35, 1, 5000, 15, 255 },
+    { novas_frame1, 35, 1, 5000, 15, 255 },
+    { novas_frame0, 35, 1, 5000, 15, 255 },
+    
+    // Fourth section: 10 seconds, 10Hz (12 frames)
+    { novas_frame1, 35, 1, 10000, 10, 255 },
+    { novas_frame2, 35, 1, 10000, 10, 255 },
+    { novas_frame3, 35, 1, 10000, 10, 255 },
+    { novas_frame4, 35, 1, 10000, 10, 255 },
+    { novas_frame5, 35, 1, 10000, 10, 255 },
+    { novas_frame6, 35, 1, 10000, 10, 255 },
+    { novas_frame5, 35, 1, 10000, 10, 255 },
+    { novas_frame4, 35, 1, 10000, 10, 255 },
+    { novas_frame3, 35, 1, 10000, 10, 255 },
+    { novas_frame2, 35, 1, 10000, 10, 255 },
+    { novas_frame1, 35, 1, 10000, 10, 255 },
+    { novas_frame0, 35, 1, 10000, 10, 255 },
+    
+    // Fifth section: 10 seconds, 6Hz (12 frames)
+    { novas_frame1, 35, 1, 10000, 6, 255 },
+    { novas_frame2, 35, 1, 10000, 6, 255 },
+    { novas_frame3, 35, 1, 10000, 6, 255 },
+    { novas_frame4, 35, 1, 10000, 6, 255 },
+    { novas_frame5, 35, 1, 10000, 6, 255 },
+    { novas_frame6, 35, 1, 10000, 6, 255 },
+    { novas_frame5, 35, 1, 10000, 6, 255 },
+    { novas_frame4, 35, 1, 10000, 6, 255 },
+    { novas_frame3, 35, 1, 10000, 6, 255 },
+    { novas_frame2, 35, 1, 10000, 6, 255 },
+    { novas_frame1, 35, 1, 10000, 6, 255 },
+    { novas_frame0, 35, 1, 10000, 6, 255 },
+  };
+  const uint16_t frameCount = sizeof(novasFrames) / sizeof(novasFrames[0]);
+  return mode_custom_shapes(novasFrames, frameCount); 
+}
+
+// Metadata for the Novas effect
+static const char _data_FX_MODE_CUSTOM_NOVAS[] PROGMEM = "Novas@Speed,!,,,,Smooth;;!";
+
+// NOVAS (3-9 Hz) EFFECT - Same pattern with different Hz values
+uint16_t mode_custom_novas_3_9hz() {
+  // Extended sequence with 3-9 Hz frequency range
+  const Frame novasFrames[] = {
+    // First section: 5 seconds, 3Hz (13 frames)
+    { novas_frame0, 35, 1, 5000, 3, 255 },
+    { novas_frame1, 35, 1, 5000, 3, 255 },
+    { novas_frame2, 35, 1, 5000, 3, 255 },
+    { novas_frame3, 35, 1, 5000, 3, 255 },
+    { novas_frame4, 35, 1, 5000, 3, 255 },
+    { novas_frame5, 35, 1, 5000, 3, 255 },
+    { novas_frame6, 35, 1, 5000, 3, 255 },
+    { novas_frame5, 35, 1, 5000, 3, 255 },
+    { novas_frame4, 35, 1, 5000, 3, 255 },
+    { novas_frame3, 35, 1, 5000, 3, 255 },
+    { novas_frame2, 35, 1, 5000, 3, 255 },
+    { novas_frame1, 35, 1, 5000, 3, 255 },
+    { novas_frame0, 35, 1, 5000, 3, 255 },
+    
+    // Second section: 10 seconds, 6Hz (12 frames)
+    { novas_frame1, 35, 1, 10000, 6, 255 },
+    { novas_frame2, 35, 1, 10000, 6, 255 },
+    { novas_frame3, 35, 1, 10000, 6, 255 },
+    { novas_frame4, 35, 1, 10000, 6, 255 },
+    { novas_frame5, 35, 1, 10000, 6, 255 },
+    { novas_frame6, 35, 1, 10000, 6, 255 },
+    { novas_frame5, 35, 1, 10000, 6, 255 },
+    { novas_frame4, 35, 1, 10000, 6, 255 },
+    { novas_frame3, 35, 1, 10000, 6, 255 },
+    { novas_frame2, 35, 1, 10000, 6, 255 },
+    { novas_frame1, 35, 1, 10000, 6, 255 },
+    { novas_frame0, 35, 1, 10000, 6, 255 },
+    
+    // Third section: 15 seconds, 9Hz (11 frames)
+    { novas_frame1, 35, 1, 15000, 9, 255 },
+    { novas_frame2, 35, 1, 15000, 9, 255 },
+    { novas_frame3, 35, 1, 15000, 9, 255 },
+    { novas_frame4, 35, 1, 15000, 9, 255 },
+    { novas_frame5, 35, 1, 15000, 9, 255 },
+    { novas_frame6, 35, 1, 15000, 9, 255 },
+    { novas_frame5, 35, 1, 15000, 9, 255 },
+    { novas_frame4, 35, 1, 15000, 9, 255 },
+    { novas_frame3, 35, 1, 15000, 9, 255 },
+    { novas_frame2, 35, 1, 15000, 9, 255 },
+    { novas_frame1, 35, 1, 15000, 9, 255 },
+    
+    // Fourth section: 10 seconds, 9Hz (1 frame)
+    { novas_frame0, 35, 1, 10000, 9, 255 },
+    
+    // Fifth section: 10 seconds, 6Hz (11 frames)
+    { novas_frame1, 35, 1, 10000, 6, 255 },
+    { novas_frame2, 35, 1, 10000, 6, 255 },
+    { novas_frame3, 35, 1, 10000, 6, 255 },
+    { novas_frame4, 35, 1, 10000, 6, 255 },
+    { novas_frame5, 35, 1, 10000, 6, 255 },
+    { novas_frame6, 35, 1, 10000, 6, 255 },
+    { novas_frame5, 35, 1, 10000, 6, 255 },
+    { novas_frame4, 35, 1, 10000, 6, 255 },
+    { novas_frame3, 35, 1, 10000, 6, 255 },
+    { novas_frame2, 35, 1, 10000, 6, 255 },
+    { novas_frame1, 35, 1, 10000, 6, 255 },
+  };
+  const uint16_t frameCount = sizeof(novasFrames) / sizeof(novasFrames[0]);
+  return mode_custom_shapes(novasFrames, frameCount); 
+}
+
+// Metadata for the Novas (3-9 Hz) effect
+static const char _data_FX_MODE_CUSTOM_NOVAS_3_9HZ[] PROGMEM = "Novas (3-9 Hz)@Speed,!,,,,Smooth;;!";
+
+// NOVAS (3-9 Hz, Inverted Time) EFFECT - Inverted time progression
+uint16_t mode_custom_novas_inverted() {
+  const Frame novasFrames[] = {
+    // First section: 15 seconds, 3Hz (13 frames)
+    { novas_frame0, 35, 1, 15000, 3, 255 },
+    { novas_frame1, 35, 1, 15000, 3, 255 },
+    { novas_frame2, 35, 1, 15000, 3, 255 },
+    { novas_frame3, 35, 1, 15000, 3, 255 },
+    { novas_frame4, 35, 1, 15000, 3, 255 },
+    { novas_frame5, 35, 1, 15000, 3, 255 },
+    { novas_frame6, 35, 1, 15000, 3, 255 },
+    { novas_frame5, 35, 1, 15000, 3, 255 },
+    { novas_frame4, 35, 1, 15000, 3, 255 },
+    { novas_frame3, 35, 1, 15000, 3, 255 },
+    { novas_frame2, 35, 1, 15000, 3, 255 },
+    { novas_frame1, 35, 1, 15000, 3, 255 },
+    { novas_frame0, 35, 1, 15000, 3, 255 },
+    
+    // Second section: 10 seconds, 6Hz (12 frames)
+    { novas_frame1, 35, 1, 10000, 6, 255 },
+    { novas_frame2, 35, 1, 10000, 6, 255 },
+    { novas_frame3, 35, 1, 10000, 6, 255 },
+    { novas_frame4, 35, 1, 10000, 6, 255 },
+    { novas_frame5, 35, 1, 10000, 6, 255 },
+    { novas_frame6, 35, 1, 10000, 6, 255 },
+    { novas_frame5, 35, 1, 10000, 6, 255 },
+    { novas_frame4, 35, 1, 10000, 6, 255 },
+    { novas_frame3, 35, 1, 10000, 6, 255 },
+    { novas_frame2, 35, 1, 10000, 6, 255 },
+    { novas_frame1, 35, 1, 10000, 6, 255 },
+    { novas_frame0, 35, 1, 10000, 6, 255 },
+    
+    // Third section: 5 seconds, 9Hz (11 frames) 
+    { novas_frame1, 35, 1, 5000, 9, 255 },
+    { novas_frame2, 35, 1, 5000, 9, 255 },
+    { novas_frame3, 35, 1, 5000, 9, 255 },
+    { novas_frame4, 35, 1, 5000, 9, 255 },
+    { novas_frame5, 35, 1, 5000, 9, 255 },
+    { novas_frame6, 35, 1, 5000, 9, 255 },
+    { novas_frame5, 35, 1, 5000, 9, 255 },
+    { novas_frame4, 35, 1, 5000, 9, 255 },
+    { novas_frame3, 35, 1, 5000, 9, 255 },
+    { novas_frame2, 35, 1, 5000, 9, 255 },
+    { novas_frame1, 35, 1, 5000, 9, 255 },
+    
+    // Fourth section: 10 seconds, 9Hz (1 frame)
+    { novas_frame0, 35, 1, 10000, 9, 255 },
+    
+    // Fifth section: 10 seconds, 6Hz (11 frames)
+    { novas_frame1, 35, 1, 10000, 6, 255 },
+    { novas_frame2, 35, 1, 10000, 6, 255 },
+    { novas_frame3, 35, 1, 10000, 6, 255 },
+    { novas_frame4, 35, 1, 10000, 6, 255 },
+    { novas_frame5, 35, 1, 10000, 6, 255 },
+    { novas_frame6, 35, 1, 10000, 6, 255 },
+    { novas_frame5, 35, 1, 10000, 6, 255 },
+    { novas_frame4, 35, 1, 10000, 6, 255 },
+    { novas_frame3, 35, 1, 10000, 6, 255 },
+    { novas_frame2, 35, 1, 10000, 6, 255 },
+    { novas_frame1, 35, 1, 10000, 6, 255 },
+  };
+  const uint16_t frameCount = sizeof(novasFrames) / sizeof(novasFrames[0]);
+  return mode_custom_shapes(novasFrames, frameCount); 
+}
+
+// Metadata for the Novas (3-9 Hz, Inverted Time) effect
+static const char _data_FX_MODE_CUSTOM_NOVAS_INVERTED[] PROGMEM = "Novas (3-9 Hz, Inverted Time)@Speed,!,,,,Smooth;;!";
+
+// BLACK HOLE EFFECT - Inverted hexagon patterns with frequency progression
+// Define frames for Black Hole effect (inverted patterns, 35 elements each)
+const uint8_t blackhole_frame0[] = {
+       1, 1, 1, 1,
+      1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1,
+   1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1,
+        1, 1, 1, 1
+};
+
+const uint8_t blackhole_frame1[] = {
+       1, 1, 1, 1,
+      1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1,
+   1, 1, 1, 0, 1, 1, 1,
+    1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1,
+        1, 1, 1, 1
+};
+
+const uint8_t blackhole_frame2[] = {
+       1, 1, 1, 1,
+      1, 1, 0, 1, 1,
+    1, 1, 0, 0, 1, 1,
+   1, 1, 0, 0, 0, 1, 1,
+    1, 1, 0, 0, 1, 1,
+      1, 1, 0, 1, 1,
+        1, 1, 1, 1
+};
+
+const uint8_t blackhole_frame3[] = {
+       1, 0, 0, 1,
+      1, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 1,
+   1, 0, 0, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 1,
+      1, 0, 0, 0, 1,
+        1, 0, 0, 1
+};
+
+const uint8_t blackhole_frame4[] = {
+       1, 1, 1, 1,
+      1, 1, 0, 1, 1,
+    1, 1, 0, 0, 1, 1,
+   1, 1, 0, 0, 0, 1, 1,
+    1, 1, 0, 0, 1, 1,
+      1, 1, 0, 1, 1,
+        1, 1, 1, 1
+};
+
+const uint8_t blackhole_frame5[] = {
+       1, 1, 1, 1,
+      1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1,
+   1, 1, 1, 0, 1, 1, 1,
+    1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1,
+        1, 1, 1, 1
+};
+
+const uint8_t blackhole_frame6[] = {
+       1, 1, 1, 1,
+      1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1,
+   1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1,
+        1, 1, 1, 1
+};
+
+uint16_t mode_black_hole() {
+  const Frame pulseFrames[] = {
+    // First section: 10 seconds, 6Hz (6 frames)
+    { blackhole_frame0, 35, 1, 10000, 6, 255 },
+    { blackhole_frame1, 35, 1, 10000, 6, 255 },
+    { blackhole_frame2, 35, 1, 10000, 6, 255 },
+    { blackhole_frame3, 35, 1, 10000, 6, 255 },
+    { blackhole_frame4, 35, 1, 10000, 6, 255 },
+    { blackhole_frame5, 35, 1, 10000, 6, 255 },
+    
+    // Second section: 10 seconds, 9Hz (5 frames)
+    { blackhole_frame6, 35, 1, 10000, 9, 255 },
+    { blackhole_frame5, 35, 1, 10000, 9, 255 },
+    { blackhole_frame4, 35, 1, 10000, 9, 255 },
+    { blackhole_frame3, 35, 1, 10000, 9, 255 },
+    { blackhole_frame2, 35, 1, 10000, 9, 255 },
+    
+    // Third section: 10 seconds, 15Hz (5 frames)
+    { blackhole_frame1, 35, 1, 10000, 15, 255 },
+    { blackhole_frame0, 35, 1, 10000, 15, 255 },
+    { blackhole_frame1, 35, 1, 10000, 15, 255 },
+    { blackhole_frame2, 35, 1, 10000, 15, 255 },
+    { blackhole_frame3, 35, 1, 10000, 15, 255 },
+    
+    // Fourth section: 10 seconds, 24Hz (5 frames)
+    { blackhole_frame4, 35, 1, 10000, 24, 255 },
+    { blackhole_frame5, 35, 1, 10000, 24, 255 },
+    { blackhole_frame6, 35, 1, 10000, 24, 255 },
+    { blackhole_frame5, 35, 1, 10000, 24, 255 },
+    { blackhole_frame4, 35, 1, 10000, 24, 255 },
+    
+    // Fifth section: 10 seconds, 39Hz (5 frames)
+    { blackhole_frame3, 35, 1, 10000, 39, 255 },
+    { blackhole_frame2, 35, 1, 10000, 39, 255 },
+    { blackhole_frame1, 35, 1, 10000, 39, 255 },
+    { blackhole_frame0, 35, 1, 10000, 39, 255 },
+    { blackhole_frame1, 35, 1, 10000, 39, 255 },
+    
+    // Sixth section: 10 seconds, 24Hz (5 frames) - descending
+    { blackhole_frame2, 35, 1, 10000, 24, 255 },
+    { blackhole_frame3, 35, 1, 10000, 24, 255 },
+    { blackhole_frame4, 35, 1, 10000, 24, 255 },
+    { blackhole_frame5, 35, 1, 10000, 24, 255 },
+    { blackhole_frame6, 35, 1, 10000, 24, 255 },
+    
+    // Seventh section: 10 seconds, 15Hz (5 frames)
+    { blackhole_frame5, 35, 1, 10000, 15, 255 },
+    { blackhole_frame4, 35, 1, 10000, 15, 255 },
+    { blackhole_frame3, 35, 1, 10000, 15, 255 },
+    { blackhole_frame2, 35, 1, 10000, 15, 255 },
+    { blackhole_frame1, 35, 1, 10000, 15, 255 },
+    
+    // Eighth section: 10 seconds, 9Hz (10 frames)
+    { blackhole_frame0, 35, 1, 10000, 9, 255 },
+    { blackhole_frame1, 35, 1, 10000, 9, 255 },
+    { blackhole_frame2, 35, 1, 10000, 9, 255 },
+    { blackhole_frame3, 35, 1, 10000, 9, 255 },
+    { blackhole_frame4, 35, 1, 10000, 9, 255 },
+    { blackhole_frame5, 35, 1, 10000, 9, 255 },
+    { blackhole_frame6, 35, 1, 10000, 9, 255 },
+    { blackhole_frame5, 35, 1, 10000, 9, 255 },
+    { blackhole_frame4, 35, 1, 10000, 9, 255 },
+    { blackhole_frame3, 35, 1, 10000, 9, 255 },
+    
+    // Ninth section: 10 seconds, 6Hz (5 frames)
+    { blackhole_frame2, 35, 1, 10000, 6, 255 },
+    { blackhole_frame1, 35, 1, 10000, 6, 255 },
+    { blackhole_frame0, 35, 1, 10000, 6, 255 },
+    { blackhole_frame1, 35, 1, 10000, 6, 255 },
+    { blackhole_frame2, 35, 1, 10000, 6, 255 },
+    
+    // Tenth section: 10 seconds, 3Hz (16 frames)
+    { blackhole_frame3, 35, 1, 10000, 3, 255 },
+    { blackhole_frame4, 35, 1, 10000, 3, 255 },
+    { blackhole_frame5, 35, 1, 10000, 3, 255 },
+    { blackhole_frame6, 35, 1, 10000, 3, 255 },
+    { blackhole_frame5, 35, 1, 10000, 3, 255 },
+    { blackhole_frame4, 35, 1, 10000, 3, 255 },
+    { blackhole_frame3, 35, 1, 10000, 3, 255 },
+    { blackhole_frame2, 35, 1, 10000, 3, 255 },
+    { blackhole_frame1, 35, 1, 10000, 3, 255 },
+    { blackhole_frame0, 35, 1, 10000, 3, 255 },
+    { blackhole_frame1, 35, 1, 10000, 3, 255 },
+    { blackhole_frame2, 35, 1, 10000, 3, 255 },
+    { blackhole_frame3, 35, 1, 10000, 3, 255 },
+    { blackhole_frame4, 35, 1, 10000, 3, 255 },
+    { blackhole_frame5, 35, 1, 10000, 3, 255 },
+    { blackhole_frame6, 35, 1, 10000, 3, 255 },
+  };
+  const uint16_t frameCount = sizeof(pulseFrames) / sizeof(pulseFrames[0]);
+  return mode_custom_shapes(pulseFrames, frameCount); 
+}
+
+// Metadata for the Black Hole effect
+static const char _data_FX_MODE_BLACK_HOLE[] PROGMEM = "Black Hole@Speed,!,,,,Smooth;;!";
+
+// BLACK HOLE 3 EFFECT - Constant 3Hz frequency version
+uint16_t mode_black_hole_3() {
+  const Frame blackhole3Frames[] = {
+    // First section: 5 seconds, 3Hz (37 frames)
+    { blackhole_frame0, 35, 1, 5000, 3, 255 },
+    { blackhole_frame1, 35, 1, 5000, 3, 255 },
+    { blackhole_frame2, 35, 1, 5000, 3, 255 },
+    { blackhole_frame3, 35, 1, 5000, 3, 255 },
+    { blackhole_frame4, 35, 1, 5000, 3, 255 },
+    { blackhole_frame5, 35, 1, 5000, 3, 255 },
+    { blackhole_frame6, 35, 1, 5000, 3, 255 },
+    { blackhole_frame5, 35, 1, 5000, 3, 255 },
+    { blackhole_frame4, 35, 1, 5000, 3, 255 },
+    { blackhole_frame3, 35, 1, 5000, 3, 255 },
+    { blackhole_frame2, 35, 1, 5000, 3, 255 },
+    { blackhole_frame1, 35, 1, 5000, 3, 255 },
+    { blackhole_frame0, 35, 1, 5000, 3, 255 },
+    { blackhole_frame1, 35, 1, 5000, 3, 255 },
+    { blackhole_frame2, 35, 1, 5000, 3, 255 },
+    { blackhole_frame3, 35, 1, 5000, 3, 255 },
+    { blackhole_frame4, 35, 1, 5000, 3, 255 },
+    { blackhole_frame5, 35, 1, 5000, 3, 255 },
+    { blackhole_frame6, 35, 1, 5000, 3, 255 },
+    { blackhole_frame5, 35, 1, 5000, 3, 255 },
+    { blackhole_frame4, 35, 1, 5000, 3, 255 },
+    { blackhole_frame3, 35, 1, 5000, 3, 255 },
+    { blackhole_frame2, 35, 1, 5000, 3, 255 },
+    { blackhole_frame1, 35, 1, 5000, 3, 255 },
+    { blackhole_frame0, 35, 1, 5000, 3, 255 },
+    { blackhole_frame1, 35, 1, 5000, 3, 255 },
+    { blackhole_frame2, 35, 1, 5000, 3, 255 },
+    { blackhole_frame3, 35, 1, 5000, 3, 255 },
+    { blackhole_frame4, 35, 1, 5000, 3, 255 },
+    { blackhole_frame5, 35, 1, 5000, 3, 255 },
+    { blackhole_frame6, 35, 1, 5000, 3, 255 },
+    { blackhole_frame5, 35, 1, 5000, 3, 255 },
+    { blackhole_frame4, 35, 1, 5000, 3, 255 },
+    { blackhole_frame3, 35, 1, 5000, 3, 255 },
+    { blackhole_frame2, 35, 1, 5000, 3, 255 },
+    { blackhole_frame1, 35, 1, 5000, 3, 255 }
+  };
+  const uint16_t frameCount = sizeof(blackhole3Frames) / sizeof(blackhole3Frames[0]);
+  return mode_custom_shapes(blackhole3Frames, frameCount); 
+}
+
+// Metadata for the Black Hole 3 effect
+static const char _data_FX_MODE_BLACK_HOLE_3[] PROGMEM = "Black Hole 3@Speed,!,,,,Smooth;;!";
+
+// BLACK HOLE 6 EFFECT - Constant 6Hz frequency version
+uint16_t mode_black_hole_6() {
+  const Frame blackhole6Frames[] = {
+    // First section: 5 seconds, 6Hz (37 frames)
+    { blackhole_frame0, 35, 1, 5000, 6, 255 },
+    { blackhole_frame1, 35, 1, 5000, 6, 255 },
+    { blackhole_frame2, 35, 1, 5000, 6, 255 },
+    { blackhole_frame3, 35, 1, 5000, 6, 255 },
+    { blackhole_frame4, 35, 1, 5000, 6, 255 },
+    { blackhole_frame5, 35, 1, 5000, 6, 255 },
+    { blackhole_frame6, 35, 1, 5000, 6, 255 },
+    { blackhole_frame5, 35, 1, 5000, 6, 255 },
+    { blackhole_frame4, 35, 1, 5000, 6, 255 },
+    { blackhole_frame3, 35, 1, 5000, 6, 255 },
+    { blackhole_frame2, 35, 1, 5000, 6, 255 },
+    { blackhole_frame1, 35, 1, 5000, 6, 255 },
+    { blackhole_frame0, 35, 1, 5000, 6, 255 },
+    { blackhole_frame1, 35, 1, 5000, 6, 255 },
+    { blackhole_frame2, 35, 1, 5000, 6, 255 },
+    { blackhole_frame3, 35, 1, 5000, 6, 255 },
+    { blackhole_frame4, 35, 1, 5000, 6, 255 },
+    { blackhole_frame5, 35, 1, 5000, 6, 255 },
+    { blackhole_frame6, 35, 1, 5000, 6, 255 },
+    { blackhole_frame5, 35, 1, 5000, 6, 255 },
+    { blackhole_frame4, 35, 1, 5000, 6, 255 },
+    { blackhole_frame3, 35, 1, 5000, 6, 255 },
+    { blackhole_frame2, 35, 1, 5000, 6, 255 },
+    { blackhole_frame1, 35, 1, 5000, 6, 255 },
+    { blackhole_frame0, 35, 1, 5000, 6, 255 },
+    { blackhole_frame1, 35, 1, 5000, 6, 255 },
+    { blackhole_frame2, 35, 1, 5000, 6, 255 },
+    { blackhole_frame3, 35, 1, 5000, 6, 255 },
+    { blackhole_frame4, 35, 1, 5000, 6, 255 },
+    { blackhole_frame5, 35, 1, 5000, 6, 255 },
+    { blackhole_frame6, 35, 1, 5000, 6, 255 },
+    { blackhole_frame5, 35, 1, 5000, 6, 255 },
+    { blackhole_frame4, 35, 1, 5000, 6, 255 },
+    { blackhole_frame3, 35, 1, 5000, 6, 255 },
+    { blackhole_frame2, 35, 1, 5000, 6, 255 },
+    { blackhole_frame1, 35, 1, 5000, 6, 255 },
+    { blackhole_frame0, 35, 1, 5000, 6, 255 },
+    
+    // Second section: 10 seconds, 6Hz (30 frames)
+    { blackhole_frame1, 35, 1, 10000, 6, 255 },
+    { blackhole_frame2, 35, 1, 10000, 6, 255 },
+    { blackhole_frame3, 35, 1, 10000, 6, 255 },
+    { blackhole_frame4, 35, 1, 10000, 6, 255 },
+    { blackhole_frame5, 35, 1, 10000, 6, 255 },
+    { blackhole_frame6, 35, 1, 10000, 6, 255 },
+    { blackhole_frame5, 35, 1, 10000, 6, 255 },
+    { blackhole_frame4, 35, 1, 10000, 6, 255 },
+    { blackhole_frame3, 35, 1, 10000, 6, 255 },
+    { blackhole_frame2, 35, 1, 10000, 6, 255 },
+    { blackhole_frame1, 35, 1, 10000, 6, 255 },
+    { blackhole_frame0, 35, 1, 10000, 6, 255 },
+    { blackhole_frame1, 35, 1, 10000, 6, 255 },
+    { blackhole_frame2, 35, 1, 10000, 6, 255 },
+    { blackhole_frame3, 35, 1, 10000, 6, 255 },
+    { blackhole_frame4, 35, 1, 10000, 6, 255 },
+    { blackhole_frame5, 35, 1, 10000, 6, 255 },
+    { blackhole_frame6, 35, 1, 10000, 6, 255 },
+    { blackhole_frame5, 35, 1, 10000, 6, 255 },
+    { blackhole_frame4, 35, 1, 10000, 6, 255 },
+    { blackhole_frame3, 35, 1, 10000, 6, 255 },
+    { blackhole_frame2, 35, 1, 10000, 6, 255 },
+    { blackhole_frame1, 35, 1, 10000, 6, 255 },
+    { blackhole_frame0, 35, 1, 10000, 6, 255 },
+    { blackhole_frame1, 35, 1, 10000, 6, 255 },
+    { blackhole_frame2, 35, 1, 10000, 6, 255 },
+    { blackhole_frame3, 35, 1, 10000, 6, 255 },
+    { blackhole_frame4, 35, 1, 10000, 6, 255 },
+    { blackhole_frame5, 35, 1, 10000, 6, 255 },
+    { blackhole_frame6, 35, 1, 10000, 6, 255 },
+  };
+  const uint16_t frameCount = sizeof(blackhole6Frames) / sizeof(blackhole6Frames[0]);
+  return mode_custom_shapes(blackhole6Frames, frameCount); 
+}
+
+// Metadata for the Black Hole 6 effect
+static const char _data_FX_MODE_BLACK_HOLE_6[] PROGMEM = "Black Hole 6@Speed,!,,,,Smooth;;!";
+
+// BLACK HOLE 9 EFFECT - Variable frequency version (10Hz->15Hz->20Hz->30Hz->20Hz)
+uint16_t mode_black_hole_9() {
+  const Frame blackhole9Frames[] = {
+    // First section: 5 seconds, 10Hz (13 frames)
+    { blackhole_frame0, 35, 1, 5000, 10, 255 },
+    { blackhole_frame1, 35, 1, 5000, 10, 255 },
+    { blackhole_frame2, 35, 1, 5000, 10, 255 },
+    { blackhole_frame3, 35, 1, 5000, 10, 255 },
+    { blackhole_frame4, 35, 1, 5000, 10, 255 },
+    { blackhole_frame5, 35, 1, 5000, 10, 255 },
+    { blackhole_frame6, 35, 1, 5000, 10, 255 },
+    { blackhole_frame5, 35, 1, 5000, 10, 255 },
+    { blackhole_frame4, 35, 1, 5000, 10, 255 },
+    { blackhole_frame3, 35, 1, 5000, 10, 255 },
+    { blackhole_frame2, 35, 1, 5000, 10, 255 },
+    { blackhole_frame1, 35, 1, 5000, 10, 255 },
+    { blackhole_frame0, 35, 1, 5000, 10, 255 },
+    
+    // Second section: 5 seconds, 15Hz (12 frames)
+    { blackhole_frame1, 35, 1, 5000, 15, 255 },
+    { blackhole_frame2, 35, 1, 5000, 15, 255 },
+    { blackhole_frame3, 35, 1, 5000, 15, 255 },
+    { blackhole_frame4, 35, 1, 5000, 15, 255 },
+    { blackhole_frame5, 35, 1, 5000, 15, 255 },
+    { blackhole_frame6, 35, 1, 5000, 15, 255 },
+    { blackhole_frame5, 35, 1, 5000, 15, 255 },
+    { blackhole_frame4, 35, 1, 5000, 15, 255 },
+    { blackhole_frame3, 35, 1, 5000, 15, 255 },
+    { blackhole_frame2, 35, 1, 5000, 15, 255 },
+    { blackhole_frame1, 35, 1, 5000, 15, 255 },
+    { blackhole_frame0, 35, 1, 5000, 15, 255 },
+    
+    // Third section: 5 seconds, 20Hz (12 frames)
+    { blackhole_frame1, 35, 1, 5000, 20, 255 },
+    { blackhole_frame2, 35, 1, 5000, 20, 255 },
+    { blackhole_frame3, 35, 1, 5000, 20, 255 },
+    { blackhole_frame4, 35, 1, 5000, 20, 255 },
+    { blackhole_frame5, 35, 1, 5000, 20, 255 },
+    { blackhole_frame6, 35, 1, 5000, 20, 255 },
+    { blackhole_frame5, 35, 1, 5000, 20, 255 },
+    { blackhole_frame4, 35, 1, 5000, 20, 255 },
+    { blackhole_frame3, 35, 1, 5000, 20, 255 },
+    { blackhole_frame2, 35, 1, 5000, 20, 255 },
+    { blackhole_frame1, 35, 1, 5000, 20, 255 },
+    { blackhole_frame0, 35, 1, 5000, 20, 255 },
+    
+    // Fourth section: 10 seconds, 30Hz (12 frames)
+    { blackhole_frame1, 35, 1, 10000, 30, 255 },
+    { blackhole_frame2, 35, 1, 10000, 30, 255 },
+    { blackhole_frame3, 35, 1, 10000, 30, 255 },
+    { blackhole_frame4, 35, 1, 10000, 30, 255 },
+    { blackhole_frame5, 35, 1, 10000, 30, 255 },
+    { blackhole_frame6, 35, 1, 10000, 30, 255 },
+    { blackhole_frame5, 35, 1, 10000, 30, 255 },
+    { blackhole_frame4, 35, 1, 10000, 30, 255 },
+    { blackhole_frame3, 35, 1, 10000, 30, 255 },
+    { blackhole_frame2, 35, 1, 10000, 30, 255 },
+    { blackhole_frame1, 35, 1, 10000, 30, 255 },
+    { blackhole_frame0, 35, 1, 10000, 30, 255 },
+    
+    // Fifth section: 10 seconds, 20Hz (19 frames)
+    { blackhole_frame1, 35, 1, 10000, 20, 255 },
+    { blackhole_frame2, 35, 1, 10000, 20, 255 },
+    { blackhole_frame3, 35, 1, 10000, 20, 255 },
+    { blackhole_frame4, 35, 1, 10000, 20, 255 },
+    { blackhole_frame5, 35, 1, 10000, 20, 255 },
+    { blackhole_frame6, 35, 1, 10000, 20, 255 },
+    { blackhole_frame5, 35, 1, 10000, 20, 255 },
+    { blackhole_frame4, 35, 1, 10000, 20, 255 },
+    { blackhole_frame3, 35, 1, 10000, 20, 255 },
+    { blackhole_frame2, 35, 1, 10000, 20, 255 },
+    { blackhole_frame1, 35, 1, 10000, 20, 255 },
+    { blackhole_frame0, 35, 1, 10000, 20, 255 },
+    { blackhole_frame1, 35, 1, 10000, 20, 255 },
+    { blackhole_frame2, 35, 1, 10000, 20, 255 },
+    { blackhole_frame3, 35, 1, 10000, 20, 255 },
+    { blackhole_frame4, 35, 1, 10000, 20, 255 },
+    { blackhole_frame5, 35, 1, 10000, 20, 255 },
+    { blackhole_frame6, 35, 1, 10000, 20, 255 },
+    { blackhole_frame5, 35, 1, 10000, 20, 255 },
+  };
+  const uint16_t frameCount = sizeof(blackhole9Frames) / sizeof(blackhole9Frames[0]);
+  return mode_custom_shapes(blackhole9Frames, frameCount); 
+}
+
+// Metadata for the Black Hole 9 effect
+static const char _data_FX_MODE_BLACK_HOLE_9[] PROGMEM = "Black Hole 9@Speed,!,,,,Smooth;;!";
+
+// BLACK HOLE 15 EFFECT - Variable frequency version (10Hz->15Hz->20Hz->30Hz->20Hz)
+uint16_t mode_black_hole_15() {
+  const Frame blackhole15Frames[] = {
+    // First section: 5 seconds, 10Hz (13 frames)
+    { blackhole_frame0, 35, 1, 5000, 10, 255 },
+    { blackhole_frame1, 35, 1, 5000, 10, 255 },
+    { blackhole_frame2, 35, 1, 5000, 10, 255 },
+    { blackhole_frame3, 35, 1, 5000, 10, 255 },
+    { blackhole_frame4, 35, 1, 5000, 10, 255 },
+    { blackhole_frame5, 35, 1, 5000, 10, 255 },
+    { blackhole_frame6, 35, 1, 5000, 10, 255 },
+    { blackhole_frame5, 35, 1, 5000, 10, 255 },
+    { blackhole_frame4, 35, 1, 5000, 10, 255 },
+    { blackhole_frame3, 35, 1, 5000, 10, 255 },
+    { blackhole_frame2, 35, 1, 5000, 10, 255 },
+    { blackhole_frame1, 35, 1, 5000, 10, 255 },
+    { blackhole_frame0, 35, 1, 5000, 10, 255 },
+    
+    // Second section: 5 seconds, 15Hz (12 frames)
+    { blackhole_frame1, 35, 1, 5000, 15, 255 },
+    { blackhole_frame2, 35, 1, 5000, 15, 255 },
+    { blackhole_frame3, 35, 1, 5000, 15, 255 },
+    { blackhole_frame4, 35, 1, 5000, 15, 255 },
+    { blackhole_frame5, 35, 1, 5000, 15, 255 },
+    { blackhole_frame6, 35, 1, 5000, 15, 255 },
+    { blackhole_frame5, 35, 1, 5000, 15, 255 },
+    { blackhole_frame4, 35, 1, 5000, 15, 255 },
+    { blackhole_frame3, 35, 1, 5000, 15, 255 },
+    { blackhole_frame2, 35, 1, 5000, 15, 255 },
+    { blackhole_frame1, 35, 1, 5000, 15, 255 },
+    { blackhole_frame0, 35, 1, 5000, 15, 255 },
+    
+    // Third section: 5 seconds, 20Hz (12 frames)
+    { blackhole_frame1, 35, 1, 5000, 20, 255 },
+    { blackhole_frame2, 35, 1, 5000, 20, 255 },
+    { blackhole_frame3, 35, 1, 5000, 20, 255 },
+    { blackhole_frame4, 35, 1, 5000, 20, 255 },
+    { blackhole_frame5, 35, 1, 5000, 20, 255 },
+    { blackhole_frame6, 35, 1, 5000, 20, 255 },
+    { blackhole_frame5, 35, 1, 5000, 20, 255 },
+    { blackhole_frame4, 35, 1, 5000, 20, 255 },
+    { blackhole_frame3, 35, 1, 5000, 20, 255 },
+    { blackhole_frame2, 35, 1, 5000, 20, 255 },
+    { blackhole_frame1, 35, 1, 5000, 20, 255 },
+    { blackhole_frame0, 35, 1, 5000, 20, 255 },
+    
+    // Fourth section: 10 seconds, 30Hz (12 frames)
+    { blackhole_frame1, 35, 1, 10000, 30, 255 },
+    { blackhole_frame2, 35, 1, 10000, 30, 255 },
+    { blackhole_frame3, 35, 1, 10000, 30, 255 },
+    { blackhole_frame4, 35, 1, 10000, 30, 255 },
+    { blackhole_frame5, 35, 1, 10000, 30, 255 },
+    { blackhole_frame6, 35, 1, 10000, 30, 255 },
+    { blackhole_frame5, 35, 1, 10000, 30, 255 },
+    { blackhole_frame4, 35, 1, 10000, 30, 255 },
+    { blackhole_frame3, 35, 1, 10000, 30, 255 },
+    { blackhole_frame2, 35, 1, 10000, 30, 255 },
+    { blackhole_frame1, 35, 1, 10000, 30, 255 },
+    { blackhole_frame0, 35, 1, 10000, 30, 255 },
+    
+    // Fifth section: 10 seconds, 20Hz (19 frames)
+    { blackhole_frame1, 35, 1, 10000, 20, 255 },
+    { blackhole_frame2, 35, 1, 10000, 20, 255 },
+    { blackhole_frame3, 35, 1, 10000, 20, 255 },
+    { blackhole_frame4, 35, 1, 10000, 20, 255 },
+    { blackhole_frame5, 35, 1, 10000, 20, 255 },
+    { blackhole_frame6, 35, 1, 10000, 20, 255 },
+    { blackhole_frame5, 35, 1, 10000, 20, 255 },
+    { blackhole_frame4, 35, 1, 10000, 20, 255 },
+    { blackhole_frame3, 35, 1, 10000, 20, 255 },
+    { blackhole_frame2, 35, 1, 10000, 20, 255 },
+    { blackhole_frame1, 35, 1, 10000, 20, 255 },
+    { blackhole_frame0, 35, 1, 10000, 20, 255 },
+    { blackhole_frame1, 35, 1, 10000, 20, 255 },
+    { blackhole_frame2, 35, 1, 10000, 20, 255 },
+    { blackhole_frame3, 35, 1, 10000, 20, 255 },
+    { blackhole_frame4, 35, 1, 10000, 20, 255 },
+    { blackhole_frame5, 35, 1, 10000, 20, 255 },
+    { blackhole_frame6, 35, 1, 10000, 20, 255 },
+    { blackhole_frame5, 35, 1, 10000, 20, 255 },
+  };
+  const uint16_t frameCount = sizeof(blackhole15Frames) / sizeof(blackhole15Frames[0]);
+  return mode_custom_shapes(blackhole15Frames, frameCount); 
+}
+
+// Metadata for the Black Hole 15 effect
+static const char _data_FX_MODE_BLACK_HOLE_15[] PROGMEM = "Black Hole 15@Speed,!,,,,Smooth;;!";
+
+// Metadata for hertz testing effect
+static const char _data_FX_MODE_HERTZ_TESTING[] PROGMEM = "Phosphene Pulse@Frequency Steps,Brightness;;!;";
+
+// =============================================================================
+// ADDITIONAL TEST EFFECTS
+// =============================================================================
+
+// 1. BREATHING SQUARE EFFECT - Simple expanding/contracting square pattern
+const uint8_t square1[] = {
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 1, 1, 0, 0, 0,
+  0, 0, 0, 1, 1, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+};
+
+const uint8_t square2[] = {
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 1, 1, 1, 1, 0, 0,
+  0, 0, 1, 0, 0, 1, 0, 0,
+  0, 0, 1, 0, 0, 1, 0, 0,
+  0, 0, 1, 1, 1, 1, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+};
+
+const uint8_t square3[] = {
+  1, 1, 1, 1, 1, 1, 1, 1,
+  1, 0, 0, 0, 0, 0, 0, 1,
+  1, 0, 0, 0, 0, 0, 0, 1,
+  1, 0, 0, 0, 0, 0, 0, 1,
+  1, 0, 0, 0, 0, 0, 0, 1,
+  1, 0, 0, 0, 0, 0, 0, 1,
+  1, 0, 0, 0, 0, 0, 0, 1,
+  1, 1, 1, 1, 1, 1, 1, 1,
+};
+
+uint16_t mode_breathing_square() {
+  const Frame breathFrames[] = {
+    { square1, 8, 8, 800, 0, 255 },   // Small center square, 0.8s duration, full brightness
+    { square2, 8, 8, 600, 0, 255 },   // Medium square, 0.6s duration, full brightness
+    { square3, 8, 8, 800, 0, 255 },   // Large square, 0.8s duration, full brightness
+    { square2, 8, 8, 600, 0, 255 },   // Back to medium, 0.6s duration, full brightness
+  };
+  const uint16_t frameCount = sizeof(breathFrames) / sizeof(breathFrames[0]);
+  return mode_custom_shapes(breathFrames, frameCount);
+}
+
+// 2. SPIRAL WAVE EFFECT - Rotating spiral pattern
+const uint8_t spiral1[] = {
+  1, 0, 0, 0, 0, 0, 0, 0,
+  1, 1, 0, 0, 0, 0, 0, 0,
+  0, 1, 1, 0, 0, 0, 0, 0,
+  0, 0, 1, 1, 0, 0, 0, 0,
+  0, 0, 0, 1, 1, 0, 0, 0,
+  0, 0, 0, 0, 1, 1, 0, 0,
+  0, 0, 0, 0, 0, 1, 1, 0,
+  0, 0, 0, 0, 0, 0, 1, 1,
+};
+
+const uint8_t spiral2[] = {
+  0, 1, 0, 0, 0, 0, 0, 0,
+  0, 0, 1, 0, 0, 0, 0, 0,
+  0, 0, 0, 1, 0, 0, 0, 0,
+  0, 0, 0, 0, 1, 0, 0, 0,
+  0, 0, 0, 0, 0, 1, 0, 0,
+  0, 0, 0, 0, 0, 0, 1, 0,
+  0, 0, 0, 0, 0, 0, 0, 1,
+  1, 0, 0, 0, 0, 0, 0, 0,
+};
+
+const uint8_t spiral3[] = {
+  0, 0, 1, 0, 0, 0, 0, 0,
+  0, 0, 0, 1, 0, 0, 0, 0,
+  0, 0, 0, 0, 1, 0, 0, 0,
+  0, 0, 0, 0, 0, 1, 0, 0,
+  0, 0, 0, 0, 0, 0, 1, 0,
+  0, 0, 0, 0, 0, 0, 0, 1,
+  1, 0, 0, 0, 0, 0, 0, 0,
+  0, 1, 0, 0, 0, 0, 0, 0,
+};
+
+const uint8_t spiral4[] = {
+  0, 0, 0, 1, 0, 0, 0, 0,
+  0, 0, 0, 0, 1, 0, 0, 0,
+  0, 0, 0, 0, 0, 1, 0, 0,
+  0, 0, 0, 0, 0, 0, 1, 0,
+  0, 0, 0, 0, 0, 0, 0, 1,
+  1, 0, 0, 0, 0, 0, 0, 0,
+  0, 1, 0, 0, 0, 0, 0, 0,
+  0, 0, 1, 0, 0, 0, 0, 0,
+};
+
+uint16_t mode_spiral_wave() {
+  const Frame spiralFrames[] = {
+    { spiral1, 8, 8, 200, 0, 255 },   // Fast rotation, 0.2s per frame, full brightness
+    { spiral2, 8, 8, 200, 0, 255 },   // full brightness
+    { spiral3, 8, 8, 200, 0, 255 },   // full brightness
+    { spiral4, 8, 8, 200, 0, 255 },   // full brightness   
+  };
+  const uint16_t frameCount = sizeof(spiralFrames) / sizeof(spiralFrames[0]);
+  return mode_custom_shapes(spiralFrames, frameCount);
+}
+
+// 3. PULSING CROSS EFFECT - Cross pattern with varying intensity
+const uint8_t cross1[] = {
+  0, 0, 0, 1, 0, 0, 0,
+  0, 0, 0, 1, 0, 0, 0,
+  0, 0, 0, 1, 0, 0, 0,
+  1, 1, 1, 1, 1, 1, 1,
+  0, 0, 0, 1, 0, 0, 0,
+  0, 0, 0, 1, 0, 0, 0,
+  0, 0, 0, 1, 0, 0, 0,
+};
+
+const uint8_t cross2[] = {
+  0, 0, 1, 1, 1, 0, 0,
+  0, 0, 1, 1, 1, 0, 0,
+  1, 1, 1, 1, 1, 1, 1,
+  1, 1, 1, 1, 1, 1, 1,
+  1, 1, 1, 1, 1, 1, 1,
+  0, 0, 1, 1, 1, 0, 0,
+  0, 0, 1, 1, 1, 0, 0,
+};
+
+const uint8_t cross3[] = {
+  1, 1, 1, 1, 1, 1, 1,
+  1, 1, 1, 1, 1, 1, 1,
+  1, 1, 1, 1, 1, 1, 1,
+  1, 1, 1, 1, 1, 1, 1,
+  1, 1, 1, 1, 1, 1, 1,
+  1, 1, 1, 1, 1, 1, 1,
+  1, 1, 1, 1, 1, 1, 1,
+};
+
+uint16_t mode_pulsing_cross() {
+  const Frame crossFrames[] = {
+    { cross1, 7, 7, 600, 0, 255 },    // Thin cross, 0.6s duration, full brightness
+    { cross2, 7, 7, 400, 0, 255 },    // Thick cross, 0.4s duration, full brightness
+    { cross3, 7, 7, 300, 0, 255 },    // Full brightness, 0.3s duration
+    { cross2, 7, 7, 400, 0, 255 },    // Back to thick cross, full brightness
+  };
+  const uint16_t frameCount = sizeof(crossFrames) / sizeof(crossFrames[0]);
+  return mode_custom_shapes(crossFrames, frameCount);
+}
+
+// 4. LINEAR STRIPE EFFECT - Horizontal stripes moving vertically
+const uint8_t stripe1[] = {
+  1, 1, 1, 1, 1, 1, 1, 1,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  1, 1, 1, 1, 1, 1, 1, 1,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  1, 1, 1, 1, 1, 1, 1, 1,
+  0, 0, 0, 0, 0, 0, 0, 0,
+};
+
+const uint8_t stripe2[] = {
+  0, 0, 0, 0, 0, 0, 0, 0,
+  1, 1, 1, 1, 1, 1, 1, 1,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  1, 1, 1, 1, 1, 1, 1, 1,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  1, 1, 1, 1, 1, 1, 1, 1,
+};
+
+const uint8_t stripe3[] = {
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  1, 1, 1, 1, 1, 1, 1, 1,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  1, 1, 1, 1, 1, 1, 1, 1,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+};
+
+uint16_t mode_moving_stripes() {
+  const Frame stripeFrames[] = {
+    { stripe1, 8, 8, 300, 0, 255 },   // Pattern 1, 0.3s duration, full brightness
+    { stripe2, 8, 8, 300, 0, 255 },   // Pattern 2, 0.3s duration, full brightness
+    { stripe3, 8, 8, 300, 0, 255 },   // Pattern 3, 0.3s duration, full brightness
+  };
+  const uint16_t frameCount = sizeof(stripeFrames) / sizeof(stripeFrames[0]);
+  return mode_custom_shapes(stripeFrames, frameCount);
+}
+
+// 5. CORNER FLASH EFFECT - Alternating corner patterns for stress testing
+const uint8_t corner1[] = {
+  1, 1, 0, 0, 0, 0, 1, 1,
+  1, 1, 0, 0, 0, 0, 1, 1,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  1, 1, 0, 0, 0, 0, 1, 1,
+  1, 1, 0, 0, 0, 0, 1, 1,
+};
+
+const uint8_t corner2[] = {
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 1, 1, 1, 1, 0, 0,
+  0, 0, 1, 1, 1, 1, 0, 0,
+  0, 0, 1, 1, 1, 1, 0, 0,
+  0, 0, 1, 1, 1, 1, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+};
+
+uint16_t mode_corner_flash() {
+  const Frame cornerFrames[] = {
+    { corner1, 8, 8, 150, 0, 255 },   // Corners lit, fast 0.15s duration, full brightness
+    { corner2, 8, 8, 150, 0, 255 },   // Center lit, fast 0.15s duration, full brightness
+  };
+  const uint16_t frameCount = sizeof(cornerFrames) / sizeof(cornerFrames[0]);
+  return mode_custom_shapes(cornerFrames, frameCount);
+}
+
+// Effect metadata
+static const char _data_FX_MODE_BREATHING_SQUARE[] PROGMEM = "Breathing Square@Speed,Brightness;;!;";
+static const char _data_FX_MODE_SPIRAL_WAVE[] PROGMEM = "Spiral Wave@Speed,Brightness;;!;";
+static const char _data_FX_MODE_PULSING_CROSS[] PROGMEM = "Pulsing Cross@Speed,Brightness;;!;";
+static const char _data_FX_MODE_MOVING_STRIPES[] PROGMEM = "Moving Stripes@Speed,Brightness;;!;";
+static const char _data_FX_MODE_CORNER_FLASH[] PROGMEM = "Corner Flash@Speed,Brightness;;!;";
+
+// Hz-controlled versions metadata
+static const char _data_FX_MODE_BREATHING_SQUARE_HZ[] PROGMEM = "Breathing Square Hz@Pattern Speed,Flash Hz (0-50);;!;";
+static const char _data_FX_MODE_SPIRAL_WAVE_HZ[] PROGMEM = "Spiral Wave Hz@Pattern Speed,Flash Hz (0-50);;!;";
+static const char _data_FX_MODE_PULSING_CROSS_HZ[] PROGMEM = "Pulsing Cross Hz@Pattern Speed,Flash Hz (0-50);;!;";
+static const char _data_FX_MODE_MOVING_STRIPES_HZ[] PROGMEM = "Moving Stripes Hz@Pattern Speed,Flash Hz (0-50);;!;";
+static const char _data_FX_MODE_CORNER_FLASH_HZ[] PROGMEM = "Corner Flash Hz@Pattern Speed,Flash Hz (0-50);;!;";
+
+// Metadata for high frequency testing
+static const char _data_FX_MODE_HIGH_FREQ_TEST[] PROGMEM = "High Freq Test@Speed (25-50Hz),Brightness;;!;";
+
+// =============================================================================
+// HZ-CONTROLLED PATTERN EFFECTS
+// =============================================================================
+// These effects combine pattern animation with Hz-based flashing
+// Speed slider controls pattern animation speed
+// Intensity slider controls flash frequency (0-50Hz)
+
+// Helper function to apply Hz-based flashing to any pattern
+uint16_t mode_pattern_with_hz(const Frame frames[], uint16_t frameCount) {
+    // Get flash frequency from intensity slider (0-50Hz)
+    uint16_t flashHz = 0;
+    if (SEGMENT.intensity > 0) {
+        flashHz = map(SEGMENT.intensity, 1, 255, 1, 50);
+    }
+    
+    // Determine if we should show the pattern based on Hz timing
+    bool showPattern = true;
+    if (flashHz > 0) {
+        uint32_t period = 1000 / flashHz;
+        uint32_t halfPeriod = period / 2;
+        uint32_t now = millis();
+        uint32_t phase = now % period;
+        showPattern = (phase < halfPeriod);
+    }
+    
+    // If not showing pattern, black out all pixels and return
+    if (!showPattern) {
+        for (uint16_t i = 0; i < SEGLEN; i++) {
+            SEGMENT.setPixelColor(i, BLACK);
+        }
+        return FRAMETIME;
+    }
+    
+    // Otherwise, render the pattern normally
+    // This code is adapted from mode_custom_shapes with timing fix for high Hz
+    if (!frames || frameCount == 0 || frameCount > 255) {
+        return FRAMETIME;
+    }
+    
+    if (SEGENV.call == 0) {
+        SEGENV.aux0 = millis();
+        SEGENV.aux1 = 0;
+        SEGENV.step = 0;
+    }
+    
+    uint16_t currentFrame = SEGENV.aux1;
+    if (currentFrame >= frameCount) {
+        currentFrame = 0;
+        SEGENV.aux1 = 0;
+    }
+    
+    const Frame &frame = frames[currentFrame];
+    if (!frame.data) {
+        SEGENV.aux1 = (currentFrame + 1) % frameCount;
+        return FRAMETIME;
+    }
+    
+    uint32_t patternSize = (uint32_t)frame.width * frame.height;
+    if (patternSize == 0 || patternSize > 10000) {
+        SEGENV.aux1 = (currentFrame + 1) % frameCount;
+        return FRAMETIME;
+    }
+    
+    // Speed-based timing for pattern animation
+    uint32_t baseDuration = (frame.baseDuration > 0) ? frame.baseDuration : 1000;
+    uint32_t frameTime;
+    
+    if (SEGMENT.speed < 128) {
+        frameTime = map(SEGMENT.speed, 0, 127, baseDuration * 4, baseDuration);
+    } else {
+        frameTime = map(SEGMENT.speed, 128, 255, baseDuration, baseDuration / 4);
+    }
+    
+    // Allow faster timing for Hz effects (10ms minimum instead of 33ms)
+    frameTime = constrain(frameTime, 10, 10000);
+    
+    uint32_t now = millis();
+    bool shouldAdvanceFrame = false;
+    
+    if (now >= SEGENV.aux0) {
+        shouldAdvanceFrame = (now - SEGENV.aux0) >= frameTime;
+    } else {
+        shouldAdvanceFrame = true;
+    }
+    
+    if (shouldAdvanceFrame) {
+        SEGENV.aux0 = now;
+        SEGENV.aux1 = (currentFrame + 1) % frameCount;
+    }
+    
+    // Apply pattern
+    uint16_t segmentLength = SEGLEN;
+    if (segmentLength > 1000) {
+        segmentLength = 1000;
+    }
+    
+    uint32_t primaryColor = SEGCOLOR(0);
+    if (primaryColor == BLACK) {
+        primaryColor = SEGMENT.color_from_palette(128, false, PALETTE_SOLID_WRAP, 0);
+        if (primaryColor == BLACK) {
+            primaryColor = WHITE;
+        }
+    }
+    
+    for (uint16_t i = 0; i < segmentLength; i++) {
+        uint32_t patternIndex = i % patternSize;
+        
+        if (frame.data) {
+            uint8_t patternValue = frame.data[patternIndex];
+            
+            if (patternValue == 0) {
+                SEGMENT.setPixelColor(i, BLACK);
+            } else {
+                SEGMENT.setPixelColor(i, primaryColor);
+            }
+        } else {
+            SEGMENT.setPixelColor(i, BLACK);
+        }
+    }
+    
+    return FRAMETIME;
+}
+
+// 1. BREATHING SQUARE HZ - Breathing square with Hz control
+uint16_t mode_breathing_square_hz() {
+    const Frame breathFrames[] = {
+        { square1, 8, 8, 800, 0, 255 },  // full brightness
+        { square2, 8, 8, 600, 0, 255 },  // full brightness
+        { square3, 8, 8, 800, 0, 255 },  // full brightness
+        { square2, 8, 8, 600, 0, 255 },  // full brightness
+    };
+    const uint16_t frameCount = sizeof(breathFrames) / sizeof(breathFrames[0]);
+    return mode_pattern_with_hz(breathFrames, frameCount);
+}
+
+// 2. SPIRAL WAVE HZ - Spiral wave with Hz control
+uint16_t mode_spiral_wave_hz() {
+    const Frame spiralFrames[] = {
+        { spiral1, 8, 8, 200, 0, 255 },  // full brightness
+        { spiral2, 8, 8, 200, 0, 255 },  // full brightness
+        { spiral3, 8, 8, 200, 0, 255 },  // full brightness
+        { spiral4, 8, 8, 200, 0, 255 },  // full brightness
+    };
+    const uint16_t frameCount = sizeof(spiralFrames) / sizeof(spiralFrames[0]);
+    return mode_pattern_with_hz(spiralFrames, frameCount);
+}
+
+// 3. PULSING CROSS HZ - Pulsing cross with Hz control
+uint16_t mode_pulsing_cross_hz() {
+    const Frame crossFrames[] = {
+        { cross1, 7, 7, 600, 0, 255 },  // full brightness
+        { cross2, 7, 7, 400, 0, 255 },  // full brightness
+        { cross3, 7, 7, 300, 0, 255 },  // full brightness
+        { cross2, 7, 7, 400, 0, 255 },  // full brightness
+    };
+    const uint16_t frameCount = sizeof(crossFrames) / sizeof(crossFrames[0]);
+    return mode_pattern_with_hz(crossFrames, frameCount);
+}
+
+// 4. MOVING STRIPES HZ - Moving stripes with Hz control
+uint16_t mode_moving_stripes_hz() {
+    const Frame stripeFrames[] = {
+        { stripe1, 8, 8, 300, 0, 255 },  // full brightness
+        { stripe2, 8, 8, 300, 0, 255 },  // full brightness
+        { stripe3, 8, 8, 300, 0, 255 },  // full brightness
+    };
+    const uint16_t frameCount = sizeof(stripeFrames) / sizeof(stripeFrames[0]);
+    return mode_pattern_with_hz(stripeFrames, frameCount);
+}
+
+// 5. CORNER FLASH HZ - Corner flash with Hz control
+uint16_t mode_corner_flash_hz() {
+    const Frame cornerFrames[] = {
+        { corner1, 8, 8, 150, 0, 255 },  // full brightness
+        { corner2, 8, 8, 150, 0, 255 },  // full brightness
+    };
+    const uint16_t frameCount = sizeof(cornerFrames) / sizeof(cornerFrames[0]);
+    return mode_pattern_with_hz(cornerFrames, frameCount);
+}
+
+// STATIC HZ TEST - Pure Hz testing with smooth 0-50Hz control
+uint16_t mode_static_hz_test() {
+    // Get flash frequency from intensity slider (0-50Hz)
+    // Intensity 0 = static on (no flashing)
+    // Intensity 255 = 50Hz
+    uint16_t flashHz = 0;
+    if (SEGMENT.intensity > 0) {
+        flashHz = map(SEGMENT.intensity, 1, 255, 1, 50);
+    }
+    
+    // Get brightness from speed slider
+    uint8_t brightness = SEGMENT.speed;
+    
+    // Determine if we should be on based on Hz timing
+    bool isOn = true;
+    if (flashHz > 0) {
+        uint32_t period = 1000 / flashHz;
+        uint32_t halfPeriod = period / 2;
+        uint32_t now = millis();
+        uint32_t phase = now % period;
+        isOn = (phase < halfPeriod);
+    }
+    
+    // Set color based on state
+    uint32_t color = BLACK;
+    if (isOn && brightness > 0) {
+        // Get primary color or use white
+        color = SEGCOLOR(0);
+        if (color == BLACK) {
+            // Create white with brightness
+            uint8_t val = brightness;
+            color = ((uint32_t)val << 16) | ((uint32_t)val << 8) | val;
+        } else {
+            // Scale existing color by brightness
+            uint8_t r = (color >> 16 & 0xFF) * brightness / 255;
+            uint8_t g = (color >> 8 & 0xFF) * brightness / 255;
+            uint8_t b = (color & 0xFF) * brightness / 255;
+            color = ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
+        }
+    }
+    
+    // Limit pixel count based on frequency for performance
+    uint16_t maxPixels = SEGLEN;
+    if (flashHz >= 40) {
+        maxPixels = min((uint16_t)100, SEGLEN);  // 40-50Hz: max 100 pixels
+    } else if (flashHz >= 30) {
+        maxPixels = min((uint16_t)200, SEGLEN);  // 30-40Hz: max 200 pixels
+    } else if (flashHz >= 20) {
+        maxPixels = min((uint16_t)500, SEGLEN);  // 20-30Hz: max 500 pixels
+    }
+    // Below 20Hz: no limit needed
+    
+    // Update pixels
+    for (uint16_t i = 0; i < maxPixels; i++) {
+        SEGMENT.setPixelColor(i, color);
+    }
+    
+    // Clear any remaining pixels if we limited the count
+    for (uint16_t i = maxPixels; i < SEGLEN; i++) {
+        SEGMENT.setPixelColor(i, BLACK);
+    }
+    
+    return FRAMETIME;
+}
+
+// Metadata for static Hz test
+static const char _data_FX_MODE_STATIC_HZ_TEST[] PROGMEM = "Static Hz Test@Brightness,Flash Hz (0-50);;!;";
 
 
 // Custom spin
@@ -7955,16 +9333,21 @@ const uint8_t cframe5[] = {
 };
 
 uint16_t mode_custom_circles() {
-  const uint8_t *frames[] = {cframe0, cframe1, cframe2, cframe3, cframe4, cframe5}; // Create an array of pointers
   const Frame cframes[] = {
-    { cframe0, 10, 0 },  // Show for 2 seconds
-    { cframe1, 2, 0},  // Show for 3 seconds
-    { cframe2, 10, 0 },  // Show for 1 second
-    { cframe3, 10, 0 },  // Show for 2 seconds
-    { cframe4, 2, 0 },  // Show for 3 seconds
-    { cframe5, 10, 0 }  // Show for 1 second
-};
-  const uint16_t frameCount = sizeof(frames) / sizeof(frames[0]);
+    { cframe0, 8, 8, 2000, 0, 255 },  // 8x8 pattern, 2s base duration, no pulse, full brightness
+    { cframe1, 8, 8, 500, 0, 255 },   // 8x8 pattern, 0.5s base duration, no pulse, full brightness
+    { cframe2, 8, 8, 2000, 0, 255 },  // 8x8 pattern, 2s base duration, no pulse, full brightness
+    { cframe3, 8, 8, 2000, 0, 255 },  // 8x8 pattern, 2s base duration, no pulse, full brightness
+    { cframe4, 8, 8, 500, 0, 255 },   // 8x8 pattern, 0.5s base duration, no pulse, full brightness
+    { cframe5, 8, 8, 2000, 0, 255 },  // 8x8 pattern, 2s base duration, no pulse, full brightness
+    { cframe0, 8, 8, 200, 0, 255 },   // 8x8 pattern, 0.2s base duration, no pulse, full brightness
+    { cframe1, 8, 8, 8000, 4, 255 },  // 8x8 pattern, 8s base duration, 4Hz base pulse, full brightness
+    { cframe5, 8, 8, 2000, 0, 255 },  // 8x8 pattern, 2s base duration, no pulse, full brightness
+    { cframe3, 8, 8, 200, 0, 255 },   // 8x8 pattern, 0.2s base duration, no pulse, full brightness
+    { cframe4, 8, 8, 500, 0, 255 },   // 8x8 pattern, 0.5s base duration, no pulse, full brightness
+    { cframe5, 8, 8, 2000, 0, 255 },  // 8x8 pattern, 2s base duration, no pulse, full brightness
+  };
+  const uint16_t frameCount = sizeof(cframes) / sizeof(cframes[0]);
   return mode_custom_shapes(cframes, frameCount); 
   // static uint32_t lastFrameTime = 0;
   // static uint8_t currentFrame = 0; // Frame index: 0, 1, or 2
@@ -8231,10 +9614,33 @@ void WS2812FX::setupEffectData() {
   // now replace all pre-allocated effects
   // --- 1D non-audio effects ---
   addEffect(FX_MODE_CUSTOM_BEN, &mode_custom_ben, _data_FX_MODE_CUSTOM_BEN);
+  addEffect(FX_MODE_CUSTOM_NOVAS, &mode_custom_novas, _data_FX_MODE_CUSTOM_NOVAS);
+  addEffect(FX_MODE_CUSTOM_NOVAS_3_9HZ, &mode_custom_novas_3_9hz, _data_FX_MODE_CUSTOM_NOVAS_3_9HZ);
+  addEffect(FX_MODE_CUSTOM_NOVAS_INVERTED, &mode_custom_novas_inverted, _data_FX_MODE_CUSTOM_NOVAS_INVERTED);
+  addEffect(FX_MODE_BLACK_HOLE, &mode_black_hole, _data_FX_MODE_BLACK_HOLE);
+  addEffect(FX_MODE_BLACK_HOLE_3, &mode_black_hole_3, _data_FX_MODE_BLACK_HOLE_3);
+  addEffect(FX_MODE_BLACK_HOLE_6, &mode_black_hole_6, _data_FX_MODE_BLACK_HOLE_6);
+  addEffect(FX_MODE_BLACK_HOLE_9, &mode_black_hole_9, _data_FX_MODE_BLACK_HOLE_9);
+  addEffect(FX_MODE_BLACK_HOLE_15, &mode_black_hole_15, _data_FX_MODE_BLACK_HOLE_15);
+  addEffect(FX_MODE_HERTZ_TESTING, &mode_hertz_testing, _data_FX_MODE_HERTZ_TESTING);
+  addEffect(FX_MODE_HIGH_FREQ_TEST, &mode_high_frequency_test, _data_FX_MODE_HIGH_FREQ_TEST);
   addEffect(FX_MODE_CUSTOM_D_DIAMOND_SPIN, &mode_custom_drunk_diamond_spin, _data_FX_MODE_CUSTOM_D_DIAMOND_SPIN);
   addEffect(FX_MODE_CUSTOM_DIAMOND_SPIN, &mode_custom_diamond_spin, _data_FX_MODE_CUSTOM_DIAMOND_SPIN);
   addEffect(FX_MODE_CUSTOM_SQUARES, &mode_custom_squares, _data_FX_MODE_CUSTOM);
   addEffect(FX_MODE_CUSTOM_CIRCLES, &mode_custom_circles, _data_FX_MODE_CIRCLE);
+  // New test effects
+  addEffect(FX_MODE_BREATHING_SQUARE, &mode_breathing_square, _data_FX_MODE_BREATHING_SQUARE);
+  addEffect(FX_MODE_SPIRAL_WAVE, &mode_spiral_wave, _data_FX_MODE_SPIRAL_WAVE);
+  addEffect(FX_MODE_PULSING_CROSS, &mode_pulsing_cross, _data_FX_MODE_PULSING_CROSS);
+  addEffect(FX_MODE_MOVING_STRIPES, &mode_moving_stripes, _data_FX_MODE_MOVING_STRIPES);
+  addEffect(FX_MODE_CORNER_FLASH, &mode_corner_flash, _data_FX_MODE_CORNER_FLASH);
+  // Hz-controlled pattern effects
+  addEffect(FX_MODE_BREATHING_SQUARE_HZ, &mode_breathing_square_hz, _data_FX_MODE_BREATHING_SQUARE_HZ);
+  addEffect(FX_MODE_SPIRAL_WAVE_HZ, &mode_spiral_wave_hz, _data_FX_MODE_SPIRAL_WAVE_HZ);
+  addEffect(FX_MODE_PULSING_CROSS_HZ, &mode_pulsing_cross_hz, _data_FX_MODE_PULSING_CROSS_HZ);
+  addEffect(FX_MODE_MOVING_STRIPES_HZ, &mode_moving_stripes_hz, _data_FX_MODE_MOVING_STRIPES_HZ);
+  addEffect(FX_MODE_CORNER_FLASH_HZ, &mode_corner_flash_hz, _data_FX_MODE_CORNER_FLASH_HZ);
+  addEffect(FX_MODE_STATIC_HZ_TEST, &mode_static_hz_test, _data_FX_MODE_STATIC_HZ_TEST);
   addEffect(FX_MODE_BLINK, &mode_blink, _data_FX_MODE_BLINK);
   addEffect(FX_MODE_BREATH, &mode_breath, _data_FX_MODE_BREATH);
   addEffect(FX_MODE_COLOR_WIPE, &mode_color_wipe, _data_FX_MODE_COLOR_WIPE);
