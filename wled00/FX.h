@@ -332,8 +332,16 @@
 #define FX_MODE_MOVING_STRIPES_HZ      202
 #define FX_MODE_CORNER_FLASH_HZ        203
 #define FX_MODE_STATIC_HZ_TEST         204
+#define FX_MODE_CUSTOM_NOVAS           205
+#define FX_MODE_CUSTOM_NOVAS_3_9HZ     206
+#define FX_MODE_CUSTOM_NOVAS_INVERTED  207
+#define FX_MODE_BLACK_HOLE             208
+#define FX_MODE_BLACK_HOLE_3           209
+#define FX_MODE_BLACK_HOLE_6           210
+#define FX_MODE_BLACK_HOLE_9           211
+#define FX_MODE_BLACK_HOLE_15          212
 
-#define MODE_COUNT                     205
+#define MODE_COUNT                     213
 
 typedef enum mapping1D2D {
   M12_Pixels = 0,

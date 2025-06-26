@@ -8000,6 +8000,769 @@ uint16_t mode_custom_ben() {
 // Metadata for the custom effect
 static const char _data_FX_MODE_CUSTOM_BEN[] PROGMEM = "Ben@!,!,,,,Smooth;;!";
 
+// NOVAS EFFECT - Hexagon animation with ping-pong pattern
+// Define frames for Novas effect (hexagon patterns, 35 elements each)
+const uint8_t novas_frame0[] = {
+       0, 0, 0, 0,
+      0, 0, 0, 0, 0,
+    0, 0, 1, 1, 0, 0,
+   0, 0, 1, 1, 1, 0, 0,
+    0, 0, 1, 1, 0, 0,
+      0, 0, 0, 0, 0,
+        0, 0, 0, 0
+};
+
+const uint8_t novas_frame1[] = {
+       0, 0, 0, 0,
+      0, 0, 1, 0, 0,
+    0, 0, 1, 1, 0, 0,
+   0, 0, 1, 0, 1, 0, 0,
+    0, 0, 1, 1, 0, 0,
+      0, 0, 1, 0, 0,
+        0, 0, 0, 0
+};
+
+const uint8_t novas_frame2[] = {
+       0, 0, 0, 0,
+      0, 0, 1, 0, 0,
+    0, 0, 1, 1, 0, 0,
+   0, 0, 1, 1, 1, 0, 0,
+    0, 0, 1, 1, 0, 0,
+      0, 0, 1, 0, 0,
+        0, 0, 0, 0
+};
+
+const uint8_t novas_frame3[] = {
+       0, 1, 1, 0,
+      0, 1, 1, 1, 0,
+    0, 1, 1, 1, 1, 0,
+   0, 1, 1, 0, 1, 1, 0,
+    0, 1, 1, 1, 1, 0,
+      0, 1, 1, 1, 0,
+        0, 1, 1, 0
+};
+
+const uint8_t novas_frame4[] = {
+       0, 1, 1, 0,
+      0, 1, 1, 1, 0,
+    0, 1, 1, 1, 1, 0,
+   0, 1, 1, 1, 1, 1, 0,
+    0, 1, 1, 1, 1, 0,
+      0, 1, 1, 1, 0,
+        0, 1, 1, 0
+};
+
+const uint8_t novas_frame5[] = {
+       1, 1, 1, 1,
+      1, 1, 0, 1, 1,
+    1, 1, 0, 0, 1, 1,
+   1, 1, 0, 0, 0, 1, 1,
+    1, 1, 0, 0, 1, 1,
+      1, 1, 0, 1, 1,
+        1, 1, 1, 1
+};
+
+const uint8_t novas_frame6[] = {
+       1, 1, 1, 1,
+      1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1,
+   1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1,
+        1, 1, 1, 1
+};
+
+uint16_t mode_custom_novas() {
+  // Extended sequence with varying durations and Hz values
+  const Frame novasFrames[] = {
+    // First section: 5 seconds, 30Hz (13 frames)
+    { novas_frame0, 35, 1, 5000, 30, 255 },
+    { novas_frame1, 35, 1, 5000, 30, 255 },
+    { novas_frame2, 35, 1, 5000, 30, 255 },
+    { novas_frame3, 35, 1, 5000, 30, 255 },
+    { novas_frame4, 35, 1, 5000, 30, 255 },
+    { novas_frame5, 35, 1, 5000, 30, 255 },
+    { novas_frame6, 35, 1, 5000, 30, 255 },
+    { novas_frame5, 35, 1, 5000, 30, 255 },
+    { novas_frame4, 35, 1, 5000, 30, 255 },
+    { novas_frame3, 35, 1, 5000, 30, 255 },
+    { novas_frame2, 35, 1, 5000, 30, 255 },
+    { novas_frame1, 35, 1, 5000, 30, 255 },
+    { novas_frame0, 35, 1, 5000, 30, 255 },
+    
+    // Second section: 5 seconds, 20Hz (12 frames)
+    { novas_frame1, 35, 1, 5000, 20, 255 },
+    { novas_frame2, 35, 1, 5000, 20, 255 },
+    { novas_frame3, 35, 1, 5000, 20, 255 },
+    { novas_frame4, 35, 1, 5000, 20, 255 },
+    { novas_frame5, 35, 1, 5000, 20, 255 },
+    { novas_frame6, 35, 1, 5000, 20, 255 },
+    { novas_frame5, 35, 1, 5000, 20, 255 },
+    { novas_frame4, 35, 1, 5000, 20, 255 },
+    { novas_frame3, 35, 1, 5000, 20, 255 },
+    { novas_frame2, 35, 1, 5000, 20, 255 },
+    { novas_frame1, 35, 1, 5000, 20, 255 },
+    { novas_frame0, 35, 1, 5000, 20, 255 },
+    
+    // Third section: 5 seconds, 15Hz (12 frames)
+    { novas_frame1, 35, 1, 5000, 15, 255 },
+    { novas_frame2, 35, 1, 5000, 15, 255 },
+    { novas_frame3, 35, 1, 5000, 15, 255 },
+    { novas_frame4, 35, 1, 5000, 15, 255 },
+    { novas_frame5, 35, 1, 5000, 15, 255 },
+    { novas_frame6, 35, 1, 5000, 15, 255 },
+    { novas_frame5, 35, 1, 5000, 15, 255 },
+    { novas_frame4, 35, 1, 5000, 15, 255 },
+    { novas_frame3, 35, 1, 5000, 15, 255 },
+    { novas_frame2, 35, 1, 5000, 15, 255 },
+    { novas_frame1, 35, 1, 5000, 15, 255 },
+    { novas_frame0, 35, 1, 5000, 15, 255 },
+    
+    // Fourth section: 10 seconds, 10Hz (12 frames)
+    { novas_frame1, 35, 1, 10000, 10, 255 },
+    { novas_frame2, 35, 1, 10000, 10, 255 },
+    { novas_frame3, 35, 1, 10000, 10, 255 },
+    { novas_frame4, 35, 1, 10000, 10, 255 },
+    { novas_frame5, 35, 1, 10000, 10, 255 },
+    { novas_frame6, 35, 1, 10000, 10, 255 },
+    { novas_frame5, 35, 1, 10000, 10, 255 },
+    { novas_frame4, 35, 1, 10000, 10, 255 },
+    { novas_frame3, 35, 1, 10000, 10, 255 },
+    { novas_frame2, 35, 1, 10000, 10, 255 },
+    { novas_frame1, 35, 1, 10000, 10, 255 },
+    { novas_frame0, 35, 1, 10000, 10, 255 },
+    
+    // Fifth section: 10 seconds, 6Hz (12 frames)
+    { novas_frame1, 35, 1, 10000, 6, 255 },
+    { novas_frame2, 35, 1, 10000, 6, 255 },
+    { novas_frame3, 35, 1, 10000, 6, 255 },
+    { novas_frame4, 35, 1, 10000, 6, 255 },
+    { novas_frame5, 35, 1, 10000, 6, 255 },
+    { novas_frame6, 35, 1, 10000, 6, 255 },
+    { novas_frame5, 35, 1, 10000, 6, 255 },
+    { novas_frame4, 35, 1, 10000, 6, 255 },
+    { novas_frame3, 35, 1, 10000, 6, 255 },
+    { novas_frame2, 35, 1, 10000, 6, 255 },
+    { novas_frame1, 35, 1, 10000, 6, 255 },
+    { novas_frame0, 35, 1, 10000, 6, 255 },
+  };
+  const uint16_t frameCount = sizeof(novasFrames) / sizeof(novasFrames[0]);
+  return mode_custom_shapes(novasFrames, frameCount); 
+}
+
+// Metadata for the Novas effect
+static const char _data_FX_MODE_CUSTOM_NOVAS[] PROGMEM = "Novas@Speed,!,,,,Smooth;;!";
+
+// NOVAS (3-9 Hz) EFFECT - Same pattern with different Hz values
+uint16_t mode_custom_novas_3_9hz() {
+  // Extended sequence with 3-9 Hz frequency range
+  const Frame novasFrames[] = {
+    // First section: 5 seconds, 3Hz (13 frames)
+    { novas_frame0, 35, 1, 5000, 3, 255 },
+    { novas_frame1, 35, 1, 5000, 3, 255 },
+    { novas_frame2, 35, 1, 5000, 3, 255 },
+    { novas_frame3, 35, 1, 5000, 3, 255 },
+    { novas_frame4, 35, 1, 5000, 3, 255 },
+    { novas_frame5, 35, 1, 5000, 3, 255 },
+    { novas_frame6, 35, 1, 5000, 3, 255 },
+    { novas_frame5, 35, 1, 5000, 3, 255 },
+    { novas_frame4, 35, 1, 5000, 3, 255 },
+    { novas_frame3, 35, 1, 5000, 3, 255 },
+    { novas_frame2, 35, 1, 5000, 3, 255 },
+    { novas_frame1, 35, 1, 5000, 3, 255 },
+    { novas_frame0, 35, 1, 5000, 3, 255 },
+    
+    // Second section: 10 seconds, 6Hz (12 frames)
+    { novas_frame1, 35, 1, 10000, 6, 255 },
+    { novas_frame2, 35, 1, 10000, 6, 255 },
+    { novas_frame3, 35, 1, 10000, 6, 255 },
+    { novas_frame4, 35, 1, 10000, 6, 255 },
+    { novas_frame5, 35, 1, 10000, 6, 255 },
+    { novas_frame6, 35, 1, 10000, 6, 255 },
+    { novas_frame5, 35, 1, 10000, 6, 255 },
+    { novas_frame4, 35, 1, 10000, 6, 255 },
+    { novas_frame3, 35, 1, 10000, 6, 255 },
+    { novas_frame2, 35, 1, 10000, 6, 255 },
+    { novas_frame1, 35, 1, 10000, 6, 255 },
+    { novas_frame0, 35, 1, 10000, 6, 255 },
+    
+    // Third section: 15 seconds, 9Hz (11 frames)
+    { novas_frame1, 35, 1, 15000, 9, 255 },
+    { novas_frame2, 35, 1, 15000, 9, 255 },
+    { novas_frame3, 35, 1, 15000, 9, 255 },
+    { novas_frame4, 35, 1, 15000, 9, 255 },
+    { novas_frame5, 35, 1, 15000, 9, 255 },
+    { novas_frame6, 35, 1, 15000, 9, 255 },
+    { novas_frame5, 35, 1, 15000, 9, 255 },
+    { novas_frame4, 35, 1, 15000, 9, 255 },
+    { novas_frame3, 35, 1, 15000, 9, 255 },
+    { novas_frame2, 35, 1, 15000, 9, 255 },
+    { novas_frame1, 35, 1, 15000, 9, 255 },
+    
+    // Fourth section: 10 seconds, 9Hz (1 frame)
+    { novas_frame0, 35, 1, 10000, 9, 255 },
+    
+    // Fifth section: 10 seconds, 6Hz (11 frames)
+    { novas_frame1, 35, 1, 10000, 6, 255 },
+    { novas_frame2, 35, 1, 10000, 6, 255 },
+    { novas_frame3, 35, 1, 10000, 6, 255 },
+    { novas_frame4, 35, 1, 10000, 6, 255 },
+    { novas_frame5, 35, 1, 10000, 6, 255 },
+    { novas_frame6, 35, 1, 10000, 6, 255 },
+    { novas_frame5, 35, 1, 10000, 6, 255 },
+    { novas_frame4, 35, 1, 10000, 6, 255 },
+    { novas_frame3, 35, 1, 10000, 6, 255 },
+    { novas_frame2, 35, 1, 10000, 6, 255 },
+    { novas_frame1, 35, 1, 10000, 6, 255 },
+  };
+  const uint16_t frameCount = sizeof(novasFrames) / sizeof(novasFrames[0]);
+  return mode_custom_shapes(novasFrames, frameCount); 
+}
+
+// Metadata for the Novas (3-9 Hz) effect
+static const char _data_FX_MODE_CUSTOM_NOVAS_3_9HZ[] PROGMEM = "Novas (3-9 Hz)@Speed,!,,,,Smooth;;!";
+
+// NOVAS (3-9 Hz, Inverted Time) EFFECT - Inverted time progression
+uint16_t mode_custom_novas_inverted() {
+  const Frame novasFrames[] = {
+    // First section: 15 seconds, 3Hz (13 frames)
+    { novas_frame0, 35, 1, 15000, 3, 255 },
+    { novas_frame1, 35, 1, 15000, 3, 255 },
+    { novas_frame2, 35, 1, 15000, 3, 255 },
+    { novas_frame3, 35, 1, 15000, 3, 255 },
+    { novas_frame4, 35, 1, 15000, 3, 255 },
+    { novas_frame5, 35, 1, 15000, 3, 255 },
+    { novas_frame6, 35, 1, 15000, 3, 255 },
+    { novas_frame5, 35, 1, 15000, 3, 255 },
+    { novas_frame4, 35, 1, 15000, 3, 255 },
+    { novas_frame3, 35, 1, 15000, 3, 255 },
+    { novas_frame2, 35, 1, 15000, 3, 255 },
+    { novas_frame1, 35, 1, 15000, 3, 255 },
+    { novas_frame0, 35, 1, 15000, 3, 255 },
+    
+    // Second section: 10 seconds, 6Hz (12 frames)
+    { novas_frame1, 35, 1, 10000, 6, 255 },
+    { novas_frame2, 35, 1, 10000, 6, 255 },
+    { novas_frame3, 35, 1, 10000, 6, 255 },
+    { novas_frame4, 35, 1, 10000, 6, 255 },
+    { novas_frame5, 35, 1, 10000, 6, 255 },
+    { novas_frame6, 35, 1, 10000, 6, 255 },
+    { novas_frame5, 35, 1, 10000, 6, 255 },
+    { novas_frame4, 35, 1, 10000, 6, 255 },
+    { novas_frame3, 35, 1, 10000, 6, 255 },
+    { novas_frame2, 35, 1, 10000, 6, 255 },
+    { novas_frame1, 35, 1, 10000, 6, 255 },
+    { novas_frame0, 35, 1, 10000, 6, 255 },
+    
+    // Third section: 5 seconds, 9Hz (11 frames) 
+    { novas_frame1, 35, 1, 5000, 9, 255 },
+    { novas_frame2, 35, 1, 5000, 9, 255 },
+    { novas_frame3, 35, 1, 5000, 9, 255 },
+    { novas_frame4, 35, 1, 5000, 9, 255 },
+    { novas_frame5, 35, 1, 5000, 9, 255 },
+    { novas_frame6, 35, 1, 5000, 9, 255 },
+    { novas_frame5, 35, 1, 5000, 9, 255 },
+    { novas_frame4, 35, 1, 5000, 9, 255 },
+    { novas_frame3, 35, 1, 5000, 9, 255 },
+    { novas_frame2, 35, 1, 5000, 9, 255 },
+    { novas_frame1, 35, 1, 5000, 9, 255 },
+    
+    // Fourth section: 10 seconds, 9Hz (1 frame)
+    { novas_frame0, 35, 1, 10000, 9, 255 },
+    
+    // Fifth section: 10 seconds, 6Hz (11 frames)
+    { novas_frame1, 35, 1, 10000, 6, 255 },
+    { novas_frame2, 35, 1, 10000, 6, 255 },
+    { novas_frame3, 35, 1, 10000, 6, 255 },
+    { novas_frame4, 35, 1, 10000, 6, 255 },
+    { novas_frame5, 35, 1, 10000, 6, 255 },
+    { novas_frame6, 35, 1, 10000, 6, 255 },
+    { novas_frame5, 35, 1, 10000, 6, 255 },
+    { novas_frame4, 35, 1, 10000, 6, 255 },
+    { novas_frame3, 35, 1, 10000, 6, 255 },
+    { novas_frame2, 35, 1, 10000, 6, 255 },
+    { novas_frame1, 35, 1, 10000, 6, 255 },
+  };
+  const uint16_t frameCount = sizeof(novasFrames) / sizeof(novasFrames[0]);
+  return mode_custom_shapes(novasFrames, frameCount); 
+}
+
+// Metadata for the Novas (3-9 Hz, Inverted Time) effect
+static const char _data_FX_MODE_CUSTOM_NOVAS_INVERTED[] PROGMEM = "Novas (3-9 Hz, Inverted Time)@Speed,!,,,,Smooth;;!";
+
+// BLACK HOLE EFFECT - Inverted hexagon patterns with frequency progression
+// Define frames for Black Hole effect (inverted patterns, 35 elements each)
+const uint8_t blackhole_frame0[] = {
+       1, 1, 1, 1,
+      1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1,
+   1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1,
+        1, 1, 1, 1
+};
+
+const uint8_t blackhole_frame1[] = {
+       1, 1, 1, 1,
+      1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1,
+   1, 1, 1, 0, 1, 1, 1,
+    1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1,
+        1, 1, 1, 1
+};
+
+const uint8_t blackhole_frame2[] = {
+       1, 1, 1, 1,
+      1, 1, 0, 1, 1,
+    1, 1, 0, 0, 1, 1,
+   1, 1, 0, 0, 0, 1, 1,
+    1, 1, 0, 0, 1, 1,
+      1, 1, 0, 1, 1,
+        1, 1, 1, 1
+};
+
+const uint8_t blackhole_frame3[] = {
+       1, 0, 0, 1,
+      1, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 1,
+   1, 0, 0, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 1,
+      1, 0, 0, 0, 1,
+        1, 0, 0, 1
+};
+
+const uint8_t blackhole_frame4[] = {
+       1, 1, 1, 1,
+      1, 1, 0, 1, 1,
+    1, 1, 0, 0, 1, 1,
+   1, 1, 0, 0, 0, 1, 1,
+    1, 1, 0, 0, 1, 1,
+      1, 1, 0, 1, 1,
+        1, 1, 1, 1
+};
+
+const uint8_t blackhole_frame5[] = {
+       1, 1, 1, 1,
+      1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1,
+   1, 1, 1, 0, 1, 1, 1,
+    1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1,
+        1, 1, 1, 1
+};
+
+const uint8_t blackhole_frame6[] = {
+       1, 1, 1, 1,
+      1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1,
+   1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1,
+        1, 1, 1, 1
+};
+
+uint16_t mode_black_hole() {
+  const Frame pulseFrames[] = {
+    // First section: 10 seconds, 6Hz (6 frames)
+    { blackhole_frame0, 35, 1, 10000, 6, 255 },
+    { blackhole_frame1, 35, 1, 10000, 6, 255 },
+    { blackhole_frame2, 35, 1, 10000, 6, 255 },
+    { blackhole_frame3, 35, 1, 10000, 6, 255 },
+    { blackhole_frame4, 35, 1, 10000, 6, 255 },
+    { blackhole_frame5, 35, 1, 10000, 6, 255 },
+    
+    // Second section: 10 seconds, 9Hz (5 frames)
+    { blackhole_frame6, 35, 1, 10000, 9, 255 },
+    { blackhole_frame5, 35, 1, 10000, 9, 255 },
+    { blackhole_frame4, 35, 1, 10000, 9, 255 },
+    { blackhole_frame3, 35, 1, 10000, 9, 255 },
+    { blackhole_frame2, 35, 1, 10000, 9, 255 },
+    
+    // Third section: 10 seconds, 15Hz (5 frames)
+    { blackhole_frame1, 35, 1, 10000, 15, 255 },
+    { blackhole_frame0, 35, 1, 10000, 15, 255 },
+    { blackhole_frame1, 35, 1, 10000, 15, 255 },
+    { blackhole_frame2, 35, 1, 10000, 15, 255 },
+    { blackhole_frame3, 35, 1, 10000, 15, 255 },
+    
+    // Fourth section: 10 seconds, 24Hz (5 frames)
+    { blackhole_frame4, 35, 1, 10000, 24, 255 },
+    { blackhole_frame5, 35, 1, 10000, 24, 255 },
+    { blackhole_frame6, 35, 1, 10000, 24, 255 },
+    { blackhole_frame5, 35, 1, 10000, 24, 255 },
+    { blackhole_frame4, 35, 1, 10000, 24, 255 },
+    
+    // Fifth section: 10 seconds, 39Hz (5 frames)
+    { blackhole_frame3, 35, 1, 10000, 39, 255 },
+    { blackhole_frame2, 35, 1, 10000, 39, 255 },
+    { blackhole_frame1, 35, 1, 10000, 39, 255 },
+    { blackhole_frame0, 35, 1, 10000, 39, 255 },
+    { blackhole_frame1, 35, 1, 10000, 39, 255 },
+    
+    // Sixth section: 10 seconds, 24Hz (5 frames) - descending
+    { blackhole_frame2, 35, 1, 10000, 24, 255 },
+    { blackhole_frame3, 35, 1, 10000, 24, 255 },
+    { blackhole_frame4, 35, 1, 10000, 24, 255 },
+    { blackhole_frame5, 35, 1, 10000, 24, 255 },
+    { blackhole_frame6, 35, 1, 10000, 24, 255 },
+    
+    // Seventh section: 10 seconds, 15Hz (5 frames)
+    { blackhole_frame5, 35, 1, 10000, 15, 255 },
+    { blackhole_frame4, 35, 1, 10000, 15, 255 },
+    { blackhole_frame3, 35, 1, 10000, 15, 255 },
+    { blackhole_frame2, 35, 1, 10000, 15, 255 },
+    { blackhole_frame1, 35, 1, 10000, 15, 255 },
+    
+    // Eighth section: 10 seconds, 9Hz (10 frames)
+    { blackhole_frame0, 35, 1, 10000, 9, 255 },
+    { blackhole_frame1, 35, 1, 10000, 9, 255 },
+    { blackhole_frame2, 35, 1, 10000, 9, 255 },
+    { blackhole_frame3, 35, 1, 10000, 9, 255 },
+    { blackhole_frame4, 35, 1, 10000, 9, 255 },
+    { blackhole_frame5, 35, 1, 10000, 9, 255 },
+    { blackhole_frame6, 35, 1, 10000, 9, 255 },
+    { blackhole_frame5, 35, 1, 10000, 9, 255 },
+    { blackhole_frame4, 35, 1, 10000, 9, 255 },
+    { blackhole_frame3, 35, 1, 10000, 9, 255 },
+    
+    // Ninth section: 10 seconds, 6Hz (5 frames)
+    { blackhole_frame2, 35, 1, 10000, 6, 255 },
+    { blackhole_frame1, 35, 1, 10000, 6, 255 },
+    { blackhole_frame0, 35, 1, 10000, 6, 255 },
+    { blackhole_frame1, 35, 1, 10000, 6, 255 },
+    { blackhole_frame2, 35, 1, 10000, 6, 255 },
+    
+    // Tenth section: 10 seconds, 3Hz (16 frames)
+    { blackhole_frame3, 35, 1, 10000, 3, 255 },
+    { blackhole_frame4, 35, 1, 10000, 3, 255 },
+    { blackhole_frame5, 35, 1, 10000, 3, 255 },
+    { blackhole_frame6, 35, 1, 10000, 3, 255 },
+    { blackhole_frame5, 35, 1, 10000, 3, 255 },
+    { blackhole_frame4, 35, 1, 10000, 3, 255 },
+    { blackhole_frame3, 35, 1, 10000, 3, 255 },
+    { blackhole_frame2, 35, 1, 10000, 3, 255 },
+    { blackhole_frame1, 35, 1, 10000, 3, 255 },
+    { blackhole_frame0, 35, 1, 10000, 3, 255 },
+    { blackhole_frame1, 35, 1, 10000, 3, 255 },
+    { blackhole_frame2, 35, 1, 10000, 3, 255 },
+    { blackhole_frame3, 35, 1, 10000, 3, 255 },
+    { blackhole_frame4, 35, 1, 10000, 3, 255 },
+    { blackhole_frame5, 35, 1, 10000, 3, 255 },
+    { blackhole_frame6, 35, 1, 10000, 3, 255 },
+  };
+  const uint16_t frameCount = sizeof(pulseFrames) / sizeof(pulseFrames[0]);
+  return mode_custom_shapes(pulseFrames, frameCount); 
+}
+
+// Metadata for the Black Hole effect
+static const char _data_FX_MODE_BLACK_HOLE[] PROGMEM = "Black Hole@Speed,!,,,,Smooth;;!";
+
+// BLACK HOLE 3 EFFECT - Constant 3Hz frequency version
+uint16_t mode_black_hole_3() {
+  const Frame blackhole3Frames[] = {
+    // First section: 5 seconds, 3Hz (37 frames)
+    { blackhole_frame0, 35, 1, 5000, 3, 255 },
+    { blackhole_frame1, 35, 1, 5000, 3, 255 },
+    { blackhole_frame2, 35, 1, 5000, 3, 255 },
+    { blackhole_frame3, 35, 1, 5000, 3, 255 },
+    { blackhole_frame4, 35, 1, 5000, 3, 255 },
+    { blackhole_frame5, 35, 1, 5000, 3, 255 },
+    { blackhole_frame6, 35, 1, 5000, 3, 255 },
+    { blackhole_frame5, 35, 1, 5000, 3, 255 },
+    { blackhole_frame4, 35, 1, 5000, 3, 255 },
+    { blackhole_frame3, 35, 1, 5000, 3, 255 },
+    { blackhole_frame2, 35, 1, 5000, 3, 255 },
+    { blackhole_frame1, 35, 1, 5000, 3, 255 },
+    { blackhole_frame0, 35, 1, 5000, 3, 255 },
+    { blackhole_frame1, 35, 1, 5000, 3, 255 },
+    { blackhole_frame2, 35, 1, 5000, 3, 255 },
+    { blackhole_frame3, 35, 1, 5000, 3, 255 },
+    { blackhole_frame4, 35, 1, 5000, 3, 255 },
+    { blackhole_frame5, 35, 1, 5000, 3, 255 },
+    { blackhole_frame6, 35, 1, 5000, 3, 255 },
+    { blackhole_frame5, 35, 1, 5000, 3, 255 },
+    { blackhole_frame4, 35, 1, 5000, 3, 255 },
+    { blackhole_frame3, 35, 1, 5000, 3, 255 },
+    { blackhole_frame2, 35, 1, 5000, 3, 255 },
+    { blackhole_frame1, 35, 1, 5000, 3, 255 },
+    { blackhole_frame0, 35, 1, 5000, 3, 255 },
+    { blackhole_frame1, 35, 1, 5000, 3, 255 },
+    { blackhole_frame2, 35, 1, 5000, 3, 255 },
+    { blackhole_frame3, 35, 1, 5000, 3, 255 },
+    { blackhole_frame4, 35, 1, 5000, 3, 255 },
+    { blackhole_frame5, 35, 1, 5000, 3, 255 },
+    { blackhole_frame6, 35, 1, 5000, 3, 255 },
+    { blackhole_frame5, 35, 1, 5000, 3, 255 },
+    { blackhole_frame4, 35, 1, 5000, 3, 255 },
+    { blackhole_frame3, 35, 1, 5000, 3, 255 },
+    { blackhole_frame2, 35, 1, 5000, 3, 255 },
+    { blackhole_frame1, 35, 1, 5000, 3, 255 }
+  };
+  const uint16_t frameCount = sizeof(blackhole3Frames) / sizeof(blackhole3Frames[0]);
+  return mode_custom_shapes(blackhole3Frames, frameCount); 
+}
+
+// Metadata for the Black Hole 3 effect
+static const char _data_FX_MODE_BLACK_HOLE_3[] PROGMEM = "Black Hole 3@Speed,!,,,,Smooth;;!";
+
+// BLACK HOLE 6 EFFECT - Constant 6Hz frequency version
+uint16_t mode_black_hole_6() {
+  const Frame blackhole6Frames[] = {
+    // First section: 5 seconds, 6Hz (37 frames)
+    { blackhole_frame0, 35, 1, 5000, 6, 255 },
+    { blackhole_frame1, 35, 1, 5000, 6, 255 },
+    { blackhole_frame2, 35, 1, 5000, 6, 255 },
+    { blackhole_frame3, 35, 1, 5000, 6, 255 },
+    { blackhole_frame4, 35, 1, 5000, 6, 255 },
+    { blackhole_frame5, 35, 1, 5000, 6, 255 },
+    { blackhole_frame6, 35, 1, 5000, 6, 255 },
+    { blackhole_frame5, 35, 1, 5000, 6, 255 },
+    { blackhole_frame4, 35, 1, 5000, 6, 255 },
+    { blackhole_frame3, 35, 1, 5000, 6, 255 },
+    { blackhole_frame2, 35, 1, 5000, 6, 255 },
+    { blackhole_frame1, 35, 1, 5000, 6, 255 },
+    { blackhole_frame0, 35, 1, 5000, 6, 255 },
+    { blackhole_frame1, 35, 1, 5000, 6, 255 },
+    { blackhole_frame2, 35, 1, 5000, 6, 255 },
+    { blackhole_frame3, 35, 1, 5000, 6, 255 },
+    { blackhole_frame4, 35, 1, 5000, 6, 255 },
+    { blackhole_frame5, 35, 1, 5000, 6, 255 },
+    { blackhole_frame6, 35, 1, 5000, 6, 255 },
+    { blackhole_frame5, 35, 1, 5000, 6, 255 },
+    { blackhole_frame4, 35, 1, 5000, 6, 255 },
+    { blackhole_frame3, 35, 1, 5000, 6, 255 },
+    { blackhole_frame2, 35, 1, 5000, 6, 255 },
+    { blackhole_frame1, 35, 1, 5000, 6, 255 },
+    { blackhole_frame0, 35, 1, 5000, 6, 255 },
+    { blackhole_frame1, 35, 1, 5000, 6, 255 },
+    { blackhole_frame2, 35, 1, 5000, 6, 255 },
+    { blackhole_frame3, 35, 1, 5000, 6, 255 },
+    { blackhole_frame4, 35, 1, 5000, 6, 255 },
+    { blackhole_frame5, 35, 1, 5000, 6, 255 },
+    { blackhole_frame6, 35, 1, 5000, 6, 255 },
+    { blackhole_frame5, 35, 1, 5000, 6, 255 },
+    { blackhole_frame4, 35, 1, 5000, 6, 255 },
+    { blackhole_frame3, 35, 1, 5000, 6, 255 },
+    { blackhole_frame2, 35, 1, 5000, 6, 255 },
+    { blackhole_frame1, 35, 1, 5000, 6, 255 },
+    { blackhole_frame0, 35, 1, 5000, 6, 255 },
+    
+    // Second section: 10 seconds, 6Hz (30 frames)
+    { blackhole_frame1, 35, 1, 10000, 6, 255 },
+    { blackhole_frame2, 35, 1, 10000, 6, 255 },
+    { blackhole_frame3, 35, 1, 10000, 6, 255 },
+    { blackhole_frame4, 35, 1, 10000, 6, 255 },
+    { blackhole_frame5, 35, 1, 10000, 6, 255 },
+    { blackhole_frame6, 35, 1, 10000, 6, 255 },
+    { blackhole_frame5, 35, 1, 10000, 6, 255 },
+    { blackhole_frame4, 35, 1, 10000, 6, 255 },
+    { blackhole_frame3, 35, 1, 10000, 6, 255 },
+    { blackhole_frame2, 35, 1, 10000, 6, 255 },
+    { blackhole_frame1, 35, 1, 10000, 6, 255 },
+    { blackhole_frame0, 35, 1, 10000, 6, 255 },
+    { blackhole_frame1, 35, 1, 10000, 6, 255 },
+    { blackhole_frame2, 35, 1, 10000, 6, 255 },
+    { blackhole_frame3, 35, 1, 10000, 6, 255 },
+    { blackhole_frame4, 35, 1, 10000, 6, 255 },
+    { blackhole_frame5, 35, 1, 10000, 6, 255 },
+    { blackhole_frame6, 35, 1, 10000, 6, 255 },
+    { blackhole_frame5, 35, 1, 10000, 6, 255 },
+    { blackhole_frame4, 35, 1, 10000, 6, 255 },
+    { blackhole_frame3, 35, 1, 10000, 6, 255 },
+    { blackhole_frame2, 35, 1, 10000, 6, 255 },
+    { blackhole_frame1, 35, 1, 10000, 6, 255 },
+    { blackhole_frame0, 35, 1, 10000, 6, 255 },
+    { blackhole_frame1, 35, 1, 10000, 6, 255 },
+    { blackhole_frame2, 35, 1, 10000, 6, 255 },
+    { blackhole_frame3, 35, 1, 10000, 6, 255 },
+    { blackhole_frame4, 35, 1, 10000, 6, 255 },
+    { blackhole_frame5, 35, 1, 10000, 6, 255 },
+    { blackhole_frame6, 35, 1, 10000, 6, 255 },
+  };
+  const uint16_t frameCount = sizeof(blackhole6Frames) / sizeof(blackhole6Frames[0]);
+  return mode_custom_shapes(blackhole6Frames, frameCount); 
+}
+
+// Metadata for the Black Hole 6 effect
+static const char _data_FX_MODE_BLACK_HOLE_6[] PROGMEM = "Black Hole 6@Speed,!,,,,Smooth;;!";
+
+// BLACK HOLE 9 EFFECT - Variable frequency version (10Hz->15Hz->20Hz->30Hz->20Hz)
+uint16_t mode_black_hole_9() {
+  const Frame blackhole9Frames[] = {
+    // First section: 5 seconds, 10Hz (13 frames)
+    { blackhole_frame0, 35, 1, 5000, 10, 255 },
+    { blackhole_frame1, 35, 1, 5000, 10, 255 },
+    { blackhole_frame2, 35, 1, 5000, 10, 255 },
+    { blackhole_frame3, 35, 1, 5000, 10, 255 },
+    { blackhole_frame4, 35, 1, 5000, 10, 255 },
+    { blackhole_frame5, 35, 1, 5000, 10, 255 },
+    { blackhole_frame6, 35, 1, 5000, 10, 255 },
+    { blackhole_frame5, 35, 1, 5000, 10, 255 },
+    { blackhole_frame4, 35, 1, 5000, 10, 255 },
+    { blackhole_frame3, 35, 1, 5000, 10, 255 },
+    { blackhole_frame2, 35, 1, 5000, 10, 255 },
+    { blackhole_frame1, 35, 1, 5000, 10, 255 },
+    { blackhole_frame0, 35, 1, 5000, 10, 255 },
+    
+    // Second section: 5 seconds, 15Hz (12 frames)
+    { blackhole_frame1, 35, 1, 5000, 15, 255 },
+    { blackhole_frame2, 35, 1, 5000, 15, 255 },
+    { blackhole_frame3, 35, 1, 5000, 15, 255 },
+    { blackhole_frame4, 35, 1, 5000, 15, 255 },
+    { blackhole_frame5, 35, 1, 5000, 15, 255 },
+    { blackhole_frame6, 35, 1, 5000, 15, 255 },
+    { blackhole_frame5, 35, 1, 5000, 15, 255 },
+    { blackhole_frame4, 35, 1, 5000, 15, 255 },
+    { blackhole_frame3, 35, 1, 5000, 15, 255 },
+    { blackhole_frame2, 35, 1, 5000, 15, 255 },
+    { blackhole_frame1, 35, 1, 5000, 15, 255 },
+    { blackhole_frame0, 35, 1, 5000, 15, 255 },
+    
+    // Third section: 5 seconds, 20Hz (12 frames)
+    { blackhole_frame1, 35, 1, 5000, 20, 255 },
+    { blackhole_frame2, 35, 1, 5000, 20, 255 },
+    { blackhole_frame3, 35, 1, 5000, 20, 255 },
+    { blackhole_frame4, 35, 1, 5000, 20, 255 },
+    { blackhole_frame5, 35, 1, 5000, 20, 255 },
+    { blackhole_frame6, 35, 1, 5000, 20, 255 },
+    { blackhole_frame5, 35, 1, 5000, 20, 255 },
+    { blackhole_frame4, 35, 1, 5000, 20, 255 },
+    { blackhole_frame3, 35, 1, 5000, 20, 255 },
+    { blackhole_frame2, 35, 1, 5000, 20, 255 },
+    { blackhole_frame1, 35, 1, 5000, 20, 255 },
+    { blackhole_frame0, 35, 1, 5000, 20, 255 },
+    
+    // Fourth section: 10 seconds, 30Hz (12 frames)
+    { blackhole_frame1, 35, 1, 10000, 30, 255 },
+    { blackhole_frame2, 35, 1, 10000, 30, 255 },
+    { blackhole_frame3, 35, 1, 10000, 30, 255 },
+    { blackhole_frame4, 35, 1, 10000, 30, 255 },
+    { blackhole_frame5, 35, 1, 10000, 30, 255 },
+    { blackhole_frame6, 35, 1, 10000, 30, 255 },
+    { blackhole_frame5, 35, 1, 10000, 30, 255 },
+    { blackhole_frame4, 35, 1, 10000, 30, 255 },
+    { blackhole_frame3, 35, 1, 10000, 30, 255 },
+    { blackhole_frame2, 35, 1, 10000, 30, 255 },
+    { blackhole_frame1, 35, 1, 10000, 30, 255 },
+    { blackhole_frame0, 35, 1, 10000, 30, 255 },
+    
+    // Fifth section: 10 seconds, 20Hz (19 frames)
+    { blackhole_frame1, 35, 1, 10000, 20, 255 },
+    { blackhole_frame2, 35, 1, 10000, 20, 255 },
+    { blackhole_frame3, 35, 1, 10000, 20, 255 },
+    { blackhole_frame4, 35, 1, 10000, 20, 255 },
+    { blackhole_frame5, 35, 1, 10000, 20, 255 },
+    { blackhole_frame6, 35, 1, 10000, 20, 255 },
+    { blackhole_frame5, 35, 1, 10000, 20, 255 },
+    { blackhole_frame4, 35, 1, 10000, 20, 255 },
+    { blackhole_frame3, 35, 1, 10000, 20, 255 },
+    { blackhole_frame2, 35, 1, 10000, 20, 255 },
+    { blackhole_frame1, 35, 1, 10000, 20, 255 },
+    { blackhole_frame0, 35, 1, 10000, 20, 255 },
+    { blackhole_frame1, 35, 1, 10000, 20, 255 },
+    { blackhole_frame2, 35, 1, 10000, 20, 255 },
+    { blackhole_frame3, 35, 1, 10000, 20, 255 },
+    { blackhole_frame4, 35, 1, 10000, 20, 255 },
+    { blackhole_frame5, 35, 1, 10000, 20, 255 },
+    { blackhole_frame6, 35, 1, 10000, 20, 255 },
+    { blackhole_frame5, 35, 1, 10000, 20, 255 },
+  };
+  const uint16_t frameCount = sizeof(blackhole9Frames) / sizeof(blackhole9Frames[0]);
+  return mode_custom_shapes(blackhole9Frames, frameCount); 
+}
+
+// Metadata for the Black Hole 9 effect
+static const char _data_FX_MODE_BLACK_HOLE_9[] PROGMEM = "Black Hole 9@Speed,!,,,,Smooth;;!";
+
+// BLACK HOLE 15 EFFECT - Variable frequency version (10Hz->15Hz->20Hz->30Hz->20Hz)
+uint16_t mode_black_hole_15() {
+  const Frame blackhole15Frames[] = {
+    // First section: 5 seconds, 10Hz (13 frames)
+    { blackhole_frame0, 35, 1, 5000, 10, 255 },
+    { blackhole_frame1, 35, 1, 5000, 10, 255 },
+    { blackhole_frame2, 35, 1, 5000, 10, 255 },
+    { blackhole_frame3, 35, 1, 5000, 10, 255 },
+    { blackhole_frame4, 35, 1, 5000, 10, 255 },
+    { blackhole_frame5, 35, 1, 5000, 10, 255 },
+    { blackhole_frame6, 35, 1, 5000, 10, 255 },
+    { blackhole_frame5, 35, 1, 5000, 10, 255 },
+    { blackhole_frame4, 35, 1, 5000, 10, 255 },
+    { blackhole_frame3, 35, 1, 5000, 10, 255 },
+    { blackhole_frame2, 35, 1, 5000, 10, 255 },
+    { blackhole_frame1, 35, 1, 5000, 10, 255 },
+    { blackhole_frame0, 35, 1, 5000, 10, 255 },
+    
+    // Second section: 5 seconds, 15Hz (12 frames)
+    { blackhole_frame1, 35, 1, 5000, 15, 255 },
+    { blackhole_frame2, 35, 1, 5000, 15, 255 },
+    { blackhole_frame3, 35, 1, 5000, 15, 255 },
+    { blackhole_frame4, 35, 1, 5000, 15, 255 },
+    { blackhole_frame5, 35, 1, 5000, 15, 255 },
+    { blackhole_frame6, 35, 1, 5000, 15, 255 },
+    { blackhole_frame5, 35, 1, 5000, 15, 255 },
+    { blackhole_frame4, 35, 1, 5000, 15, 255 },
+    { blackhole_frame3, 35, 1, 5000, 15, 255 },
+    { blackhole_frame2, 35, 1, 5000, 15, 255 },
+    { blackhole_frame1, 35, 1, 5000, 15, 255 },
+    { blackhole_frame0, 35, 1, 5000, 15, 255 },
+    
+    // Third section: 5 seconds, 20Hz (12 frames)
+    { blackhole_frame1, 35, 1, 5000, 20, 255 },
+    { blackhole_frame2, 35, 1, 5000, 20, 255 },
+    { blackhole_frame3, 35, 1, 5000, 20, 255 },
+    { blackhole_frame4, 35, 1, 5000, 20, 255 },
+    { blackhole_frame5, 35, 1, 5000, 20, 255 },
+    { blackhole_frame6, 35, 1, 5000, 20, 255 },
+    { blackhole_frame5, 35, 1, 5000, 20, 255 },
+    { blackhole_frame4, 35, 1, 5000, 20, 255 },
+    { blackhole_frame3, 35, 1, 5000, 20, 255 },
+    { blackhole_frame2, 35, 1, 5000, 20, 255 },
+    { blackhole_frame1, 35, 1, 5000, 20, 255 },
+    { blackhole_frame0, 35, 1, 5000, 20, 255 },
+    
+    // Fourth section: 10 seconds, 30Hz (12 frames)
+    { blackhole_frame1, 35, 1, 10000, 30, 255 },
+    { blackhole_frame2, 35, 1, 10000, 30, 255 },
+    { blackhole_frame3, 35, 1, 10000, 30, 255 },
+    { blackhole_frame4, 35, 1, 10000, 30, 255 },
+    { blackhole_frame5, 35, 1, 10000, 30, 255 },
+    { blackhole_frame6, 35, 1, 10000, 30, 255 },
+    { blackhole_frame5, 35, 1, 10000, 30, 255 },
+    { blackhole_frame4, 35, 1, 10000, 30, 255 },
+    { blackhole_frame3, 35, 1, 10000, 30, 255 },
+    { blackhole_frame2, 35, 1, 10000, 30, 255 },
+    { blackhole_frame1, 35, 1, 10000, 30, 255 },
+    { blackhole_frame0, 35, 1, 10000, 30, 255 },
+    
+    // Fifth section: 10 seconds, 20Hz (19 frames)
+    { blackhole_frame1, 35, 1, 10000, 20, 255 },
+    { blackhole_frame2, 35, 1, 10000, 20, 255 },
+    { blackhole_frame3, 35, 1, 10000, 20, 255 },
+    { blackhole_frame4, 35, 1, 10000, 20, 255 },
+    { blackhole_frame5, 35, 1, 10000, 20, 255 },
+    { blackhole_frame6, 35, 1, 10000, 20, 255 },
+    { blackhole_frame5, 35, 1, 10000, 20, 255 },
+    { blackhole_frame4, 35, 1, 10000, 20, 255 },
+    { blackhole_frame3, 35, 1, 10000, 20, 255 },
+    { blackhole_frame2, 35, 1, 10000, 20, 255 },
+    { blackhole_frame1, 35, 1, 10000, 20, 255 },
+    { blackhole_frame0, 35, 1, 10000, 20, 255 },
+    { blackhole_frame1, 35, 1, 10000, 20, 255 },
+    { blackhole_frame2, 35, 1, 10000, 20, 255 },
+    { blackhole_frame3, 35, 1, 10000, 20, 255 },
+    { blackhole_frame4, 35, 1, 10000, 20, 255 },
+    { blackhole_frame5, 35, 1, 10000, 20, 255 },
+    { blackhole_frame6, 35, 1, 10000, 20, 255 },
+    { blackhole_frame5, 35, 1, 10000, 20, 255 },
+  };
+  const uint16_t frameCount = sizeof(blackhole15Frames) / sizeof(blackhole15Frames[0]);
+  return mode_custom_shapes(blackhole15Frames, frameCount); 
+}
+
+// Metadata for the Black Hole 15 effect
+static const char _data_FX_MODE_BLACK_HOLE_15[] PROGMEM = "Black Hole 15@Speed,!,,,,Smooth;;!";
+
 // Metadata for hertz testing effect
 static const char _data_FX_MODE_HERTZ_TESTING[] PROGMEM = "Phosphene Pulse@Frequency Steps,Brightness;;!;";
 
@@ -8843,6 +9606,14 @@ void WS2812FX::setupEffectData() {
   // now replace all pre-allocated effects
   // --- 1D non-audio effects ---
   addEffect(FX_MODE_CUSTOM_BEN, &mode_custom_ben, _data_FX_MODE_CUSTOM_BEN);
+  addEffect(FX_MODE_CUSTOM_NOVAS, &mode_custom_novas, _data_FX_MODE_CUSTOM_NOVAS);
+  addEffect(FX_MODE_CUSTOM_NOVAS_3_9HZ, &mode_custom_novas_3_9hz, _data_FX_MODE_CUSTOM_NOVAS_3_9HZ);
+  addEffect(FX_MODE_CUSTOM_NOVAS_INVERTED, &mode_custom_novas_inverted, _data_FX_MODE_CUSTOM_NOVAS_INVERTED);
+  addEffect(FX_MODE_BLACK_HOLE, &mode_black_hole, _data_FX_MODE_BLACK_HOLE);
+  addEffect(FX_MODE_BLACK_HOLE_3, &mode_black_hole_3, _data_FX_MODE_BLACK_HOLE_3);
+  addEffect(FX_MODE_BLACK_HOLE_6, &mode_black_hole_6, _data_FX_MODE_BLACK_HOLE_6);
+  addEffect(FX_MODE_BLACK_HOLE_9, &mode_black_hole_9, _data_FX_MODE_BLACK_HOLE_9);
+  addEffect(FX_MODE_BLACK_HOLE_15, &mode_black_hole_15, _data_FX_MODE_BLACK_HOLE_15);
   addEffect(FX_MODE_HERTZ_TESTING, &mode_hertz_testing, _data_FX_MODE_HERTZ_TESTING);
   addEffect(FX_MODE_HIGH_FREQ_TEST, &mode_high_frequency_test, _data_FX_MODE_HIGH_FREQ_TEST);
   addEffect(FX_MODE_CUSTOM_D_DIAMOND_SPIN, &mode_custom_drunk_diamond_spin, _data_FX_MODE_CUSTOM_D_DIAMOND_SPIN);
