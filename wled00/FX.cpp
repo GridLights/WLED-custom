@@ -7526,6 +7526,11 @@ uint16_t mode_custom_shapes(const Frame frames[], uint16_t frameCount) {
         strobeState = true;
     }
 
+    // Validate input parameters
+    if (!frames || frameCount == 0) {
+        return FRAMETIME;
+    }
+
     // Validate frame count and current frame
     if (frameCount == 0 || currentFrame >= frameCount) {
         currentFrame = 0;
@@ -7563,7 +7568,10 @@ uint16_t mode_custom_shapes(const Frame frames[], uint16_t frameCount) {
 
     // Get the current frame data
     const uint8_t *currentColors = frame.data;
-    uint32_t patternSize = frame.width * frame.height;
+    uint32_t patternSize = (uint32_t)frame.width * frame.height;
+    if (patternSize == 0 || patternSize > 10000) { // Reasonable upper limit
+        return FRAMETIME;
+    }
 
     // Get primary color
     uint32_t primaryColor = SEGCOLOR(0);
